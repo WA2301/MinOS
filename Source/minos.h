@@ -81,12 +81,12 @@ void       OSStartHighRdy(void);
 #define  OS_FALSE                     0u
 #define  OS_TRUE                      1u
 
-#define  OS_PRIO_SELF              0xFFu                /* Indicate SELF priority                      */
+// #define  OS_PRIO_SELF              0xFFu                /* Indicate SELF priority                      */
 #define  OS_N_SYS_TASKS               1u
 #define  OS_TASK_IDLE_PRIO  (OS_LOWEST_PRIO)            /* IDLE      task priority                     */
-#define  OS_RDY_TBL_SIZE   ((OS_LOWEST_PRIO) / 8 + 1)   /* Size of ready table                         */
+// #define  OS_RDY_TBL_SIZE   ((OS_LOWEST_PRIO) / 8 + 1)   /* Size of ready table                         */
 
-#define  OS_TCB_RESERVED        ((OS_TCB *)1)
+// #define  OS_TCB_RESERVED        ((OS_TCB *)1)
 
 /*$PAGE*/
 /*
@@ -118,7 +118,7 @@ void       OSStartHighRdy(void);
 #define OS_ERR_TASK_NO_MORE_TCB      66u
 #define OS_ERR_TASK_NOT_EXIST        67u
 
-#define  OS_EVENT_TBL_SIZE ((OS_LOWEST_PRIO) / 8 + 1)   /* Size of event table                         */
+// #define  OS_EVENT_TBL_SIZE ((OS_LOWEST_PRIO) / 8 + 1)   /* Size of event table                         */
 /*$PAGE*/
 /*
 *********************************************************************************************************
@@ -129,9 +129,9 @@ void       OSStartHighRdy(void);
 #if OS_Q_EN > 0
 typedef struct os_event {
     void    *OSEventPtr;                     /* Pointer to message or queue structure                   */
-    INT8U    OSEventGrp;                     /* Group corresponding to tasks waiting for event to occur */
-    INT8U    OSEventTbl[OS_EVENT_TBL_SIZE];  /* List of tasks waiting for event to occur                */
-
+    // INT8U    OSEventGrp;                     /* Group corresponding to tasks waiting for event to occur */
+    // INT8U    OSEventTbl[OS_EVENT_TBL_SIZE];  /* List of tasks waiting for event to occur                */
+    INT32U  OSEventTbl;//该事件有哪些任务在等待..可能一个，也可能多个甚至全部
 } OS_EVENT;
 #endif
 
@@ -157,10 +157,13 @@ typedef struct os_tcb {
     INT8U            OSTCBStat;             /* Task      status                                        */
     INT8U            OSTCBStatPend;         /* Task PEND status                                        */
     INT8U            OSTCBPrio;             /* Task priority (0 == highest)                            */
-    INT8U            OSTCBX;                /* Bit position in group  corresponding to task priority   */
-    INT8U            OSTCBY;                /* Index into ready table corresponding to task priority   */
-    INT8U            OSTCBBitX;             /* Bit mask to access bit position in ready table          */
-    INT8U            OSTCBBitY;             /* Bit mask to access bit position in ready group          */
+    //共支持64个优先级，即6位bit，如0010 0011 = 0x23
+    // INT8U            OSTCBX;                /* 优先级低3位,上例中为 011 即 0x03 Bit position in group  corresponding to task priority   */
+    // INT8U            OSTCBY;                /* 优先级高3位,上例中为 100 即 0x04 Index into ready table corresponding to task priority   */
+    
+    // //
+    // INT8U            OSTCBBitX;             /* Bit mask to access bit position in ready table          */
+    // INT8U            OSTCBBitY;             /* Bit mask to access bit position in ready group          */
 } OS_TCB;
 
 
@@ -172,15 +175,19 @@ typedef struct os_tcb {
 *********************************************************************************************************
 */
 
-OS_EXT  INT8U  const  		OSUnMapTbl[256];
+// OS_EXT  INT8U  const  		OSUnMapTbl[256];
 
 OS_EXT  INT8U             OSIntNesting;             /* Interrupt nesting level                         */
 
 OS_EXT  INT8U             OSPrioCur;                /* Priority of current task                        */
 OS_EXT  INT8U             OSPrioHighRdy;            /* Priority of highest priority task               */
 
-OS_EXT  INT8U             OSRdyGrp;                        /* Ready list group                         */
-OS_EXT  INT8U             OSRdyTbl[OS_RDY_TBL_SIZE];       /* Table of tasks which are ready to run    */
+// OS_EXT  INT8U             OSRdyGrp;                        /* Ready list group                         */
+
+/** Priority: 31 30 29 ... 3  2  1  0 
+ ** OSRdyTbl:  0  0  0 ... 0  0  0  0 (32bit)
+ **/
+OS_EXT  INT32U            OSRdyTbl;                        /* Table of tasks which are ready to run    */
 
 OS_EXT  OS_STK            OSTaskIdleStk[OS_TASK_IDLE_STK_SIZE];      /* Idle task stack                */
 
@@ -189,7 +196,7 @@ OS_EXT  OS_TCB           *OSTCBFreeList;                   /* Pointer to list of
 OS_EXT  OS_TCB           *OSTCBHighRdy;                    /* Pointer to highest priority TCB R-to-R   */
 OS_EXT  OS_TCB           *OSTCBList;                       /* Pointer to doubly linked list of TCBs    */
 OS_EXT  OS_TCB           *OSTCBPrioTbl[OS_LOWEST_PRIO + 1];/* Table of pointers to created TCBs        */
-OS_EXT  OS_TCB            OSTCBTbl[OS_MAX_TASKS + OS_N_SYS_TASKS];   /* Table of TCBs                  */
+OS_EXT  OS_TCB            OSTCBTbl    [OS_LOWEST_PRIO + 1];/* Table of TCBs                            */
 
 
 /*$PAGE*/
@@ -200,7 +207,6 @@ OS_EXT  OS_TCB            OSTCBTbl[OS_MAX_TASKS + OS_N_SYS_TASKS];   /* Table of
 */
 
 INT8U         OSTaskCreate            (void           (*task)(void *p_arg),
-                                       void            *p_arg,
                                        OS_STK          *ptos,
                                        INT8U            prio);
 
@@ -235,8 +241,10 @@ typedef struct os_q_data {
     void          *OSMsg;               /* Pointer to next message to be extracted from queue          */
     INT16U         OSNMsgs;             /* Number of messages in message queue                         */
     INT16U         OSQSize;             /* Size of message queue                                       */
-    INT8U          OSEventTbl[OS_EVENT_TBL_SIZE];  /* List of tasks waiting for event to occur         */
-    INT8U          OSEventGrp;          /* Group corresponding to tasks waiting for event to occur     */
+    // INT8U          OSEventTbl[OS_EVENT_TBL_SIZE];  /* List of tasks waiting for event to occur         */
+
+    INT32U         OSEventTbl;          /* List of tasks waiting for event to occur         */
+    // INT8U          OSEventGrp;          /* Group corresponding to tasks waiting for event to occur     */
 } OS_Q_DATA;
 
 OS_EXT  OS_EVENT         *OSEventFreeList;          /* Pointer to list of free EVENT control blocks    */

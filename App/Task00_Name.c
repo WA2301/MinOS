@@ -8,8 +8,7 @@
   */
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32f10x.h"
-#include "minos.h"																  /* Header file for MinOS. */
+#include "minos.h"									/* Header file for MinOS. */
 
 /* Public variables ----------------------------------------------------------*/
 

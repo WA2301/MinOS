@@ -1,8 +1,8 @@
 /**
-ÒÆÖ²²½Öè£º
-1£¬Í¨¹ýÐÞ¸Ästarup_stm32f10x_xx.s½«STM32ÖÐ PendSVHandler()ÖÐ¶Ï¶¨ÏòÖÁ
-		OS_CPU_PendSVHandler()£¨os_cpu_a.asm£©
-2£¬ÔÚSysTick_Handler()ÖÐÍê³ÉÒÔÏÂ¹¤×÷£º
+ç§»æ¤æ­¥éª¤ï¼š
+1ï¼Œé€šè¿‡ä¿®æ”¹starup_stm32f10x_xx.så°†STM32ä¸­ PendSVHandler()ä¸­æ–­å®šå‘è‡³
+		OS_CPU_PendSVHandler()ï¼ˆos_cpu_a.asmï¼‰
+2ï¼Œåœ¨SysTick_Handler()ä¸­å®Œæˆä»¥ä¸‹å·¥ä½œï¼š
 
 	OSIntEnter();         // Tell uC/OS-II that we are starting an ISR          
   //TODO::                    
@@ -10,17 +10,17 @@
 	OSIntExit();          // Tell uC/OS-II that we are leaving the ISR          
 
 Note:
-	ÔÚÒÔÏÂÇé¿ö»á½øÐÐÈÎÎñµ÷¶È£ºOS_Sched()
+	åœ¨ä»¥ä¸‹æƒ…å†µä¼šè¿›è¡Œä»»åŠ¡è°ƒåº¦ï¼šOS_Sched()
 		1,OSQPost()
 		2,OSQPend()
 		3,OSTimeDly()		
 		
-		\OSQCreate() [Ô­°æÖÐ´Ë´¦»á½øÐÐµ÷¶È£¬¸Ã°æÈ¡Ïû]
+		\OSQCreate() [åŽŸç‰ˆä¸­æ­¤å¤„ä¼šè¿›è¡Œè°ƒåº¦ï¼Œè¯¥ç‰ˆå–æ¶ˆ]
 		
 		
 		
 		
-	ÔÚÒÔÏÂÇé¿ö¸üÐÂ¾ÍÐ÷×î¸ßÓÅÏÈ¼¶£ºOS_SchedNew()
+	åœ¨ä»¥ä¸‹æƒ…å†µæ›´æ–°å°±ç»ªæœ€é«˜ä¼˜å…ˆçº§ï¼šOS_SchedNew()
 	'OSPrioHighRdy' will be changed accordingly.
 	
 		1,OSStart()
@@ -29,12 +29,11 @@ Note:
 		
 		
 		
-		µ÷¶ÈÁ÷³Ì£ºOSCtxSw()[´¥·¢PendSVHandlerÖÐ¶Ï]
-							->OS_CPU_PendSVHandler() [µ÷ÓÃ]
+		è°ƒåº¦æµç¨‹ï¼šOSCtxSw()[è§¦å‘PendSVHandlerä¸­æ–­]
+							->OS_CPU_PendSVHandler() [è°ƒç”¨]
 							->OS_CPU_PendSVHandler_nosave() 
 									TODO:OSPrioCur = OSPrioHighRdy;
 											 OSTCBCur  = OSTCBHighRdy;
 											 SP = OSTCBHighRdy->OSTCBStkPtr;
 
 */
-

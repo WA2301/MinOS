@@ -17,34 +17,6 @@
 #define  OS_GLOBALS  																															/* OS_EXT is BLANK.  */
 #include <minos.h>
 
-/*
-*********************************************************************************************************
-*                                       PRIORITY RESOLUTION TABLE
-*
-* Note: Index into table is bit pattern to resolve highest priority
-*       Indexed value corresponds to highest priority bit position (i.e. 0..7)
-*********************************************************************************************************
-*/
-
-INT8U  const  OSUnMapTbl[256] = {
-    0, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x00 to 0x0F                             */
-    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x10 to 0x1F                             */
-    5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x20 to 0x2F                             */
-    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x30 to 0x3F                             */
-    6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x40 to 0x4F                             */
-    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x50 to 0x5F                             */
-    5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x60 to 0x6F                             */
-    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x70 to 0x7F                             */
-    7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x80 to 0x8F                             */
-    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0x90 to 0x9F                             */
-    5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0xA0 to 0xAF                             */
-    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0xB0 to 0xBF                             */
-    6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0xC0 to 0xCF                             */
-    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0xD0 to 0xDF                             */
-    5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,       /* 0xE0 to 0xEF                             */
-    4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0        /* 0xF0 to 0xFF                             */
-};
-
 /*$PAGE*/
 /*
 *********************************************************************************************************
@@ -60,11 +32,12 @@ INT8U  const  OSUnMapTbl[256] = {
 *********************************************************************************************************
 */
 
-static  void  OS_SchedNew (void)
+static  void  OS_PrioGetHighest (void)
 {	
-    INT8U   y;
-    y             = OSUnMapTbl[OSRdyGrp];
-    OSPrioHighRdy = (INT8U)((y << 3) + OSUnMapTbl[OSRdyTbl[y]]);
+    // INT8U   y;
+    // y             = OSUnMapTbl[OSRdyGrp];
+    // OSPrioHighRdy = (INT8U)((y << 3) + OSUnMapTbl[OSRdyTbl[y]]);
+    //即查找最低位的0个数
 }
 
 /*$PAGE*/
@@ -91,11 +64,11 @@ void  OS_Sched (void)
     OS_ENTER_CRITICAL();
 		
     if (OSIntNesting == 0) {                           /* Schedule only if all ISRs done and ...       */
-				OS_SchedNew();
-				if (OSPrioHighRdy != OSPrioCur) {         	 	 /* No Ctx Sw if current task is highest rdy     */
-						OSTCBHighRdy = OSTCBPrioTbl[OSPrioHighRdy];							
-						OSCtxSw();                          			 /* Perform a context switch, see os_cpu_a.asm   */
-				}        
+        OS_PrioGetHighest();
+        if (OSPrioHighRdy != OSPrioCur) {         	 	 /* No Ctx Sw if current task is highest rdy     */
+            OSTCBHighRdy = OSTCBPrioTbl[OSPrioHighRdy];							
+            OSCtxSw();                          			 /* Perform a context switch, see os_cpu_a.asm   */
+        }        
     }
 		
     OS_EXIT_CRITICAL();
@@ -123,9 +96,9 @@ void  OS_Sched (void)
 
 void  OSIntEnter (void)
 {
-		if (OSIntNesting < 255u) {
-				OSIntNesting++;                      							/* Increment ISR nesting level               */
-		}
+    if (OSIntNesting < 255u) {
+        OSIntNesting++;                      							/* Increment ISR nesting level               */
+    }
 }
 
 void  OSIntExit (void)
@@ -133,20 +106,20 @@ void  OSIntExit (void)
 #if OS_CRITICAL_METHOD == 3                                /* Allocate storage for CPU status register */
     OS_CPU_SR  cpu_sr = 0;
 #endif
-		OS_ENTER_CRITICAL();
-		
-		if (OSIntNesting > 0) {                            		 /* Prevent OSIntNesting from wrapping       */
-				OSIntNesting--;
-		}
-		if (OSIntNesting == 0) {                           		 /* Reschedule only if all ISRs complete ... */
-				OS_SchedNew();
-				if (OSPrioHighRdy != OSPrioCur) {          			 /* No Ctx Sw if current task is highest rdy */
-						OSTCBHighRdy  = OSTCBPrioTbl[OSPrioHighRdy];
-						OSCtxSw();                          	 			 /* Perform interrupt level ctx switch       */
-				}				
-		}
-		
-		OS_EXIT_CRITICAL();
+    OS_ENTER_CRITICAL();
+    
+    if (OSIntNesting > 0) {                            		 /* Prevent OSIntNesting from wrapping       */
+        OSIntNesting--;
+    }
+    if (OSIntNesting == 0) {                           		 /* Reschedule only if all ISRs complete ... */
+        OS_PrioGetHighest();
+        if (OSPrioHighRdy != OSPrioCur) {          			 /* No Ctx Sw if current task is highest rdy */
+            OSTCBHighRdy  = OSTCBPrioTbl[OSPrioHighRdy];
+            OSCtxSw();                          	 		/* Perform interrupt level ctx switch       */
+        }				
+    }
+    
+    OS_EXIT_CRITICAL();
 }
 
 /*$PAGE*/
@@ -172,28 +145,32 @@ void  OSTimeTick (void)
     OS_CPU_SR  cpu_sr = 0;
 #endif
 
-		ptcb = OSTCBList;                                  /* Point at first TCB in TCB list               */
-		while (ptcb->OSTCBPrio != OS_TASK_IDLE_PRIO) {     /* Go through all TCBs in TCB list              */
-				OS_ENTER_CRITICAL();
-				if (ptcb->OSTCBDly != 0) {                     /* No, Delayed or waiting for event with TO     */
-						if (--ptcb->OSTCBDly == 0) {               /* Decrement nbr of ticks to end of delay       */
-																											 /* Check for timeout                            */
-								if ((ptcb->OSTCBStat & OS_STAT_PEND_Q) != OS_STAT_RDY) {
-										ptcb->OSTCBStat  &= ~(INT8U)OS_STAT_PEND_Q;          	 /* Yes, Clear status flag   */
-										ptcb->OSTCBStatPend = OS_STAT_PEND_TO;                 /* Indicate PEND timeout    */
-								} else {
-										ptcb->OSTCBStatPend = OS_STAT_PEND_OK;
-								}
+    ptcb = OSTCBList;                                  /* Point at first TCB in TCB list               */
+    while (ptcb->OSTCBPrio != OS_TASK_IDLE_PRIO) {     /* Go through all TCBs in TCB list              */
+        OS_ENTER_CRITICAL();
+        if (ptcb->OSTCBDly != 0) {                     /* No, Delayed or waiting for event with TO     */
+            if (--ptcb->OSTCBDly == 0) {               /* Decrement nbr of ticks to end of delay       */
+                                                       /* Check for timeout                            */
+                if((ptcb->OSTCBStat & OS_STAT_PEND_Q) != OS_STAT_RDY) {
+                    ptcb->OSTCBStat  &= ~(INT8U)OS_STAT_PEND_Q;          	 /* Yes, Clear status flag   */
+                    ptcb->OSTCBStatPend = OS_STAT_PEND_TO;                 /* Indicate PEND timeout    */
+                } 
+                else 
+                {
+                    ptcb->OSTCBStatPend = OS_STAT_PEND_OK;
+                }
 
-								if ((ptcb->OSTCBStat & OS_STAT_SUSPEND) == OS_STAT_RDY) {  /* Is task suspended?       */
-										OSRdyGrp               |= ptcb->OSTCBBitY;             /* No,  Make ready          */
-										OSRdyTbl[ptcb->OSTCBY] |= ptcb->OSTCBBitX;
-								}
-						}
-				}
-				ptcb = ptcb->OSTCBNext;                        /* Point at next TCB in TCB list                */
-				OS_EXIT_CRITICAL();
-		}
+                if ((ptcb->OSTCBStat & OS_STAT_SUSPEND) == OS_STAT_RDY) {  /* Is task suspended?       */
+                    // OSRdyGrp               |= ptcb->OSTCBBitY;             /* No,  Make ready          */
+                    // OSRdyTbl[ptcb->OSTCBY] |= ptcb->OSTCBBitX;
+
+                    OSRdyTbl |= ( 1 << ptcb->OSTCBPrio );
+                }
+            }
+        }
+        ptcb = ptcb->OSTCBNext;                        /* Point at next TCB in TCB list                */
+        OS_EXIT_CRITICAL();
+    }
 }
 
 /*$PAGE*/
@@ -224,11 +201,13 @@ void  OSTimeDly (INT16U ticks)
     }
     if (ticks > 0) {                             /* 0 means no delay!                                  */
         OS_ENTER_CRITICAL();
-        y            =  OSTCBCur->OSTCBY;        /* Delay current task                                 */
-        OSRdyTbl[y] &= ~OSTCBCur->OSTCBBitX;
-        if (OSRdyTbl[y] == 0) {
-            OSRdyGrp &= ~OSTCBCur->OSTCBBitY;
-        }
+        // y            =  OSTCBCur->OSTCBY;        /* Delay current task                                 */
+        // OSRdyTbl[y] &= ~OSTCBCur->OSTCBBitX;
+        // if (OSRdyTbl[y] == 0) {
+        //     OSRdyGrp &= ~OSTCBCur->OSTCBBitY;
+        // }
+
+        OSRdyTbl &= ~( 1 << OSTCBCur->OSTCBPrio ); 
         OSTCBCur->OSTCBDly = ticks;              /* Load ticks in TCB                                  */
         OS_EXIT_CRITICAL();
         OS_Sched();                              /* Find next task to run!                             */
@@ -279,15 +258,17 @@ void  OSInit (void)
 		
 #if OS_Q_EN > 0
     OS_EVENT  *pevent1,*pevent2;
-		OS_Q   		*pq1,		 *pq2;
+    OS_Q   	    *pq1,		 *pq2;
 #endif	
 		
     OSIntNesting  = 0;
 																													 /* Initialize the Ready List                */
-    OSRdyGrp      = 0;                                     /* Clear the ready list                     */
-    for (i = 0; i < OS_RDY_TBL_SIZE; i++) {
-				OSRdyTbl[i]=0;
-    }
+    // OSRdyGrp      = 0;                                     /* Clear the ready list                     */
+    // for (i = 0; i < OS_RDY_TBL_SIZE; i++) {
+    //     OSRdyTbl[i] = 0;
+    // }
+    
+    OSRdyTbl      = 0;
     OSPrioCur     = 0;
     OSPrioHighRdy = 0;
 		
@@ -297,7 +278,7 @@ void  OSInit (void)
 																													 /* Initialize the free list of OS_TCBs      */
     ptcb1 = &OSTCBTbl[0];
     ptcb2 = &OSTCBTbl[1];
-    for (i = 0; i < (OS_MAX_TASKS + OS_N_SYS_TASKS - 1); i++) {  /* Init. list of free TCBs            */
+    for (i = 0; i < (OS_LOWEST_PRIO + 1); i++) {                 /* Init. list of free TCBs            */
         ptcb1->OSTCBNext = ptcb2;
         ptcb1++;
         ptcb2++;
@@ -328,8 +309,8 @@ void  OSInit (void)
     OSQFreeList = &OSQTbl[0];
 #endif
 
-    OSTaskCreate(OS_TaskIdle,(void *)0,
-                 &OSTaskIdleStk[OS_TASK_IDLE_STK_SIZE - 1],
+    OSTaskCreate(OS_TaskIdle,
+                &OSTaskIdleStk[OS_TASK_IDLE_STK_SIZE - 1],
                  OS_TASK_IDLE_PRIO);                       /* Create the Idle Task                     */
 }
 
@@ -373,7 +354,7 @@ void  OSInit (void)
 *********************************************************************************************************
 */
 
-INT8U  OS_TCBInit (INT8U prio, OS_STK *ptos, OS_STK *pbos, INT16U id, INT32U stk_size, void *pext)
+INT8U  OS_TCBInit ( INT8U prio, OS_STK *ptos )
 {
     OS_TCB    *ptcb;
 #if OS_CRITICAL_METHOD == 3                                /* Allocate storage for CPU status register */
@@ -392,15 +373,15 @@ INT8U  OS_TCBInit (INT8U prio, OS_STK *ptos, OS_STK *pbos, INT16U id, INT32U stk
         ptcb->OSTCBStatPend      = OS_STAT_PEND_OK;        /* Clear pend status                        */
         ptcb->OSTCBDly           = 0;                      /* Task is not delayed                      */
 
-        pext                     = pext;                   /* Prevent compiler warning if not used     */
-        stk_size                 = stk_size;
-        pbos                     = pbos;
-        id                       = id;
+        // pext                     = pext;                   /* Prevent compiler warning if not used     */
+        // stk_size                 = stk_size;
+        // pbos                     = pbos;
+        // id                       = id;
 
-        ptcb->OSTCBY             = (INT8U)(prio >> 3);          /* Pre-compute X, Y, BitX and BitY     */
-        ptcb->OSTCBX             = (INT8U)(prio & 0x07);
-        ptcb->OSTCBBitY          = (INT8U)(1 << ptcb->OSTCBY);
-        ptcb->OSTCBBitX          = (INT8U)(1 << ptcb->OSTCBX);
+        // ptcb->OSTCBY             = (INT8U)(prio >> 3);          /* Pre-compute X, Y, BitX and BitY     */
+        // ptcb->OSTCBX             = (INT8U)(prio & 0x07);
+        // ptcb->OSTCBBitY          = (INT8U)(1 << ptcb->OSTCBY);
+        // ptcb->OSTCBBitX          = (INT8U)(1 << ptcb->OSTCBX);
 
 #if (OS_Q_EN)
         ptcb->OSTCBEventPtr      = (OS_EVENT  *)0;         /* Task is not pending on an  event         */
@@ -415,8 +396,10 @@ INT8U  OS_TCBInit (INT8U prio, OS_STK *ptos, OS_STK *pbos, INT16U id, INT32U stk
             OSTCBList->OSTCBPrev = ptcb;
         }
         OSTCBList               = ptcb;
-        OSRdyGrp               |= ptcb->OSTCBBitY;         /* Make task ready to run                   */
-        OSRdyTbl[ptcb->OSTCBY] |= ptcb->OSTCBBitX;
+        // OSRdyGrp               |= ptcb->OSTCBBitY;         /* Make task ready to run                   */
+        // OSRdyTbl[ptcb->OSTCBY] |= ptcb->OSTCBBitX;
+
+        OSRdyTbl |= ( 1 << ptcb->OSTCBPrio );
 				
         OS_EXIT_CRITICAL();
         return (OS_ERR_NONE);
@@ -451,7 +434,7 @@ INT8U  OS_TCBInit (INT8U prio, OS_STK *ptos, OS_STK *pbos, INT16U id, INT32U stk
 *********************************************************************************************************
 */
 
-OS_STK *OSTaskStkInit (void (*task)(void *p_arg), void *p_arg, OS_STK *ptos)
+OS_STK *OSTaskStkInit (void (*task)(void *p_arg), OS_STK *ptos)
 {
     OS_STK *stk;
 		
@@ -464,7 +447,7 @@ OS_STK *OSTaskStkInit (void (*task)(void *p_arg), void *p_arg, OS_STK *ptos)
     *(--stk)  = (INT32U)0x03030303L;             /* R3                                                 */
     *(--stk)  = (INT32U)0x02020202L;             /* R2                                                 */
     *(--stk)  = (INT32U)0x01010101L;             /* R1                                                 */
-    *(--stk)  = (INT32U)p_arg;                   /* R0 : argument                                      */
+    *(--stk)  = (INT32U)0x000000000;             /* R0 : argument 原任务传入参数                                     */
                                                  /* Remaining registers saved on process stack         */
     *(--stk)  = (INT32U)0x11111111L;             /* R11                                                */
     *(--stk)  = (INT32U)0x10101010L;             /* R10                                                */
@@ -519,7 +502,7 @@ OS_STK *OSTaskStkInit (void (*task)(void *p_arg), void *p_arg, OS_STK *ptos)
 *********************************************************************************************************
 */
 
-INT8U  OSTaskCreate (void (*task)(void *p_arg), void *p_arg, OS_STK *ptos, INT8U prio)
+INT8U  OSTaskCreate (void (*task)(void *p_arg), OS_STK *ptos, INT8U prio)
 {
     OS_STK    *psp;
     INT8U      err;
@@ -530,11 +513,11 @@ INT8U  OSTaskCreate (void (*task)(void *p_arg), void *p_arg, OS_STK *ptos, INT8U
     OS_ENTER_CRITICAL();
 		
     if (OSTCBPrioTbl[prio] == (OS_TCB *)0) { /* Make sure task doesn't already exist at this priority  */
-				OSTCBPrioTbl[prio] = OS_TCB_RESERVED;/* Reserve the priority to prevent others from doing ...  */
+		OSTCBPrioTbl[prio] =  (OS_TCB *)1;   /* Reserve the priority to prevent others from doing ...  */
                                              /* ... the same thing until task is created.              */
         OS_EXIT_CRITICAL();
-        psp = OSTaskStkInit(task, p_arg, ptos);              		/* Initialize the task's stack         */				
-        err = OS_TCBInit(prio, psp, (OS_STK *)0, 0, 0, (void *)0);				
+        psp = OSTaskStkInit(task, ptos);              		/* Initialize the task's stack         */				
+        err = OS_TCBInit( prio, psp );				
         return (err);
     }
 
@@ -560,11 +543,11 @@ INT8U  OSTaskCreate (void (*task)(void *p_arg), void *p_arg, OS_STK *ptos, INT8U
 
 void  OSStart (void)
 {
-		OS_SchedNew();                               		 /* Find highest priority's task priority number   */
-		OSPrioCur     = OSPrioHighRdy;
-		OSTCBHighRdy  = OSTCBPrioTbl[OSPrioHighRdy]; 		 /* Point to highest priority task ready to run    */
-		OSTCBCur      = OSTCBHighRdy;
-		OSStartHighRdy();                            		 /* Execute target specific code to start task     */
+	OS_PrioGetHighest();                               	 /* Find highest priority's task priority number   */
+	OSPrioCur     = OSPrioHighRdy;
+	OSTCBHighRdy  = OSTCBPrioTbl[OSPrioHighRdy]; 		 /* Point to highest priority task ready to run    */
+	OSTCBCur      = OSTCBHighRdy;
+	OSStartHighRdy();                            		 /* Execute target specific code to start task     */
 }
 
 

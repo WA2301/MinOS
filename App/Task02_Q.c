@@ -8,15 +8,14 @@
   */
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32f10x.h"
 #include "minos.h"																  /* Header file for MinOS. */
 
 
 /* Public variables ----------------------------------------------------------*/
 
-extern OS_EVENT *Event_Q;
+// extern OS_EVENT *Event_Q;
 
-u16 msg=16;
+// u16 msg=16;
 
 
 
@@ -32,7 +31,7 @@ void Task02(void *p_arg)
 /* Private variables ---------------------------------------------------------*/
 	for(;;) {
 		//TODO::
-		OSQPost(Event_Q,&msg);
+		// OSQPost(Event_Q,&msg);
 		
 		OSTimeDly(1000);
 	}
