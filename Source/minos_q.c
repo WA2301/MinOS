@@ -34,17 +34,9 @@ void  OS_Sched (void);
 *
 *********************************************************************************************************
 */
-void  OS_EventTaskRemove (OS_TCB   *ptcb,
-                          OS_EVENT *pevent)
+static void  OS_EventTaskRemove (OS_TCB   *ptcb, OS_EVENT *pevent)
 {
-    // INT8U  y;
-    // y                       =  ptcb->OSTCBY;
-    // pevent->OSEventTbl[y]  &= ~ptcb->OSTCBBitX;         /* Remove task from wait list                  */
-    // if (pevent->OSEventTbl[y] == 0) {
-    //     pevent->OSEventGrp &= ~ptcb->OSTCBBitY;
-    // }
-
-    pevent->OSEventTbl &= ~( 1 << ptcb->OSTCBPrio );
+    pevent->OSEventTbl &= ~( 1 << ptcb->OSTCBPrio ); /* Remove task from wait list                  */
 }
 
 /*
@@ -75,20 +67,12 @@ void  OS_EventTaskRemove (OS_TCB   *ptcb,
 *********************************************************************************************************
 */
 
-INT8U  OS_EventTaskRdy (OS_EVENT *pevent, void *pmsg, INT8U msk, INT8U pend_stat)
+static INT8U  OS_EventTaskRdy (OS_EVENT *pevent, void *pmsg, INT8U msk, INT8U pend_stat)
 {
     OS_TCB  *ptcb;
-    INT8U    y;
-    INT8U    x;
     INT8U    prio;
-
-    // y    = OSUnMapTbl[pevent->OSEventGrp];              /* Find HPT waiting for message                */
-    // x    = OSUnMapTbl[pevent->OSEventTbl[y]];
-    // prio = (INT8U)((y << 3) + x);                       /* Find priority of task getting the msg       */
-
-    //查找前导零个数，查找　pevent-> OSEventTbl,即寻找等带该事件的任务中最高的优先级
- 
-    ....
+                                                        /* Find HPT waiting for message                */
+    prio                  = (INT8U) CPU_CntTrailZeros( pevent-> OSEventTbl );
 
     ptcb                  =  OSTCBPrioTbl[prio];        /* Point to this task's OS_TCB                 */
     ptcb->OSTCBDly        =  0;                         /* Prevent OSTimeTick() from readying task     */
@@ -99,9 +83,7 @@ INT8U  OS_EventTaskRdy (OS_EVENT *pevent, void *pmsg, INT8U msk, INT8U pend_stat
     ptcb->OSTCBStatPend   =  pend_stat;                 /* Set pend status of post or abort            */
                                                         /* See if task is ready (could be susp'd)      */
     if ((ptcb->OSTCBStat &   OS_STAT_SUSPEND) == OS_STAT_RDY) {
-        // OSRdyGrp         |=  ptcb->OSTCBBitY;           /* Put task in the ready to run list           */
-        // OSRdyTbl[y]      |=  ptcb->OSTCBBitX;
-        OSRdyTbl |= ( 1 << ptcb->OSTCBPrio );
+        OSRdyTbl |= ( 1 << ptcb->OSTCBPrio );           /* Put task in the ready to run list           */
     }
 
     OS_EventTaskRemove(ptcb, pevent);                   /* Remove this task from event   wait list     */
@@ -122,23 +104,12 @@ INT8U  OS_EventTaskRdy (OS_EVENT *pevent, void *pmsg, INT8U msk, INT8U pend_stat
 *
 *********************************************************************************************************
 */
-void  OS_EventTaskWait (OS_EVENT *pevent)
+static void  OS_EventTaskWait (OS_EVENT *pevent)
 {
-    INT8U  y;
-
     OSTCBCur->OSTCBEventPtr               = pevent;                 /* Store ptr to ECB in TCB         */
-    
-    // pevent->OSEventTbl[OSTCBCur->OSTCBY] |= OSTCBCur->OSTCBBitX;    /* Put task in waiting list        */
-    // pevent->OSEventGrp                   |= OSTCBCur->OSTCBBitY;
 
-    pevent->OSEventTbl |= ( 1 << OSTCBCur->OSTCBPrio );//该优先级的任务有个事件（即该 pevent）在等待，并非已就绪
-
-    // y             =  OSTCBCur->OSTCBY;            /* Task no longer ready                              */
-    // OSRdyTbl[y]  &= ~OSTCBCur->OSTCBBitX;
-    // if (OSRdyTbl[y] == 0) {
-    //     OSRdyGrp &= ~OSTCBCur->OSTCBBitY;         /* Clear event grp bit if this was only task pending */
-    // }
-    OSRdyTbl &= ~( 1<< OSTCBCur->OSTCBPrio );
+    pevent->OSEventTbl |= ( 1 << OSTCBCur->OSTCBPrio );/* Put task in waiting list        */
+    OSRdyTbl           &= ~( 1<< OSTCBCur->OSTCBPrio );/* Task no longer ready                              */
 }
 
 /*
@@ -154,18 +125,9 @@ void  OS_EventTaskWait (OS_EVENT *pevent)
 * Note       : This function is INTERNAL to uC/OS-II and your application should not call it.
 *********************************************************************************************************
 */
-void  OS_EventWaitListInit (OS_EVENT *pevent)
+static void  OS_EventWaitListInit (OS_EVENT *pevent)
 {
-    // INT8U  *ptbl;
-    // INT8U   i;
-
-    // pevent->OSEventGrp = 0;                      /* No task waiting on event                           */
-    // ptbl               = &pevent->OSEventTbl[0];
-
-    // for (i = 0; i < OS_EVENT_TBL_SIZE; i++) {
-    //     *ptbl++ = 0;
-    // }
-    pevent->OSEventTbl = 0;
+    pevent->OSEventTbl = 0; /* No task waiting on event                           */
 }
 
 /*
@@ -191,9 +153,7 @@ OS_EVENT  *OSQCreate (void **start, INT16U size)
 {
     OS_EVENT  *pevent;
     OS_Q      *pq;
-#if OS_CRITICAL_METHOD == 3                      /* Allocate storage for CPU status register           */
     OS_CPU_SR  cpu_sr = 0;
-#endif
 
     OS_ENTER_CRITICAL();
     pevent = OSEventFreeList;                    /* Get next free event control block                  */
@@ -267,9 +227,8 @@ void  *OSQPend (OS_EVENT *pevent, INT16U timeout, INT8U *perr)
 {
     void      *pmsg;
     OS_Q      *pq;
-#if OS_CRITICAL_METHOD == 3                      /* Allocate storage for CPU status register           */
+
     OS_CPU_SR  cpu_sr = 0;
-#endif
 
     if (OSIntNesting > 0) {                      /* See if called from ISR ...                         */
         *perr = OS_ERR_PEND_ISR;                 /* ... can't PEND from an ISR                         */
@@ -340,22 +299,13 @@ void  *OSQPend (OS_EVENT *pevent, INT16U timeout, INT8U *perr)
 INT8U  OSQPost (OS_EVENT *pevent, void *pmsg)
 {
     OS_Q      *pq;
-#if OS_CRITICAL_METHOD == 3                            /* Allocate storage for CPU status register     */
     OS_CPU_SR  cpu_sr = 0;
-#endif
 
     OS_ENTER_CRITICAL();
-    // if (pevent->OSEventGrp != 0) {                     /* See if any task pending on queue             */
-    //                                                    /* Ready highest priority task waiting on event */
-    //     (void)OS_EventTaskRdy(pevent, pmsg, OS_STAT_PEND_Q, OS_STAT_PEND_OK);
-    //     OS_EXIT_CRITICAL();
-    //     OS_Sched();                                    /* Find highest priority task ready to run      */
-    //     return (OS_ERR_NONE);
-    // }
 
     if (pevent->OSEventTbl != 0) {                     /* See if any task pending on queue             */
                                                        /* Ready highest priority task waiting on event */
-        (void)OS_EventTaskRdy(pevent, pmsg, OS_STAT_PEND_Q, OS_STAT_PEND_OK);
+        OS_EventTaskRdy(pevent, pmsg, OS_STAT_PEND_Q, OS_STAT_PEND_OK);
         OS_EXIT_CRITICAL();
         OS_Sched();                                    /* Find highest priority task ready to run      */
         return (OS_ERR_NONE);

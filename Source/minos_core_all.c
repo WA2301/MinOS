@@ -16,11 +16,96 @@
 
 #define  OS_GLOBALS  																															/* OS_EXT is BLANK.  */
 #include <minos.h>
+#include "stm32f4xx.h"
 
 #if (OS_CPU_ARM_FP_EN == DEF_ENABLED)
 void  OS_CPU_FP_Reg_Push   (INT32U    *stkPtr);
 void  OS_CPU_FP_Reg_Pop    (INT32U    *stkPtr);
 #endif
+
+
+#define Trigger_PendSV()  (SCB->ICSR |= ( 1<< SCB_ICSR_PENDSVSET_Pos ) ) 
+
+
+#define  OS_ENTER_CRITICAL()  {cpu_sr = __get_PRIMASK();__disable_irq();}
+#define  OS_EXIT_CRITICAL()   {__set_PRIMASK(cpu_sr);}
+
+#define  CPU_CntTrailZeros(data)    __CLZ(__RBIT(data))
+#define  OS_PrioGetHighest()        (OSPrioHighRdy = (INT8U) CPU_CntTrailZeros( OSRdyTbl ))  
+
+
+register volatile uint32_t* __R0  __ASM("r0");
+
+register volatile uint32_t __R4  __ASM("r4");
+register volatile uint32_t __R5  __ASM("r5");
+register volatile uint32_t __R6  __ASM("r6");
+register volatile uint32_t __R7  __ASM("r7");
+register volatile uint32_t __R8  __ASM("r8");
+register volatile uint32_t __R9  __ASM("r9");
+register volatile uint32_t __R10 __ASM("r10");
+register volatile uint32_t __R11 __ASM("r11");
+
+register volatile uint32_t LR __ASM("lr");
+register volatile uint32_t __PSP  __ASM("psp");
+
+
+
+//void PendSV_Handler(void)
+//{
+//    
+//    __disable_irq();
+//    
+//    
+//    
+//    __R0 = (uint32_t*)__PSP;
+//    
+//    if( __R0 != 0 )
+//    {
+//        *(uint32_t*)--__R0 = __R11;
+//        *(uint32_t*)--__R0 = __R10;
+//        *(uint32_t*)--__R0 = __R9;
+//        *(uint32_t*)--__R0 = __R8;
+//        *(uint32_t*)--__R0 = __R7;
+//        *(uint32_t*)--__R0 = __R6;
+//        *(uint32_t*)--__R0 = __R5;
+//        *(uint32_t*)--__R0 = __R4;
+//        
+
+//       OSTCBCur->OSTCBStkPtr = (OS_STK*) __R0;
+//    }
+//    
+//    
+//    
+//    OSPrioCur = OSPrioHighRdy;
+//    OSTCBCur  = OSTCBHighRdy;
+//   
+//    
+//    __R0 = OSTCBCur->OSTCBStkPtr;
+//    
+//    __R4  = *(uint32_t*)__R0++;
+//    __R5  = *(uint32_t*)__R0++;
+//    __R6  = *(uint32_t*)__R0++;
+//    __R7  = *(uint32_t*)__R0++;
+//    __R8  = *(uint32_t*)__R0++;
+//    __R9  = *(uint32_t*)__R0++;
+//    __R10 = *(uint32_t*)__R0++;
+//    __R11 = *(uint32_t*)__R0++;
+//    
+//    __PSP = (uint32_t)__R0;
+
+//   LR |= 0x04;
+//    
+
+//   __enable_irq();
+//   
+//}
+
+
+
+
+
+
+
 
 /*$PAGE*/
 /*
@@ -37,10 +122,10 @@ void  OS_CPU_FP_Reg_Pop    (INT32U    *stkPtr);
 *********************************************************************************************************
 */
 
-static  void  OS_PrioGetHighest (void)
-{
-    OSPrioHighRdy = (INT8U) CPU_CntTrailZeros( OSRdyTbl );
-}
+//static  void  OS_PrioGetHighest (void)
+//{
+//    OSPrioHighRdy = (INT8U) CPU_CntTrailZeros( OSRdyTbl );
+//}
 
 /*$PAGE*/
 /*
@@ -74,7 +159,7 @@ void  OS_Sched (void)
 //            OS_CPU_FP_Reg_Pop(OSTCBHighRdy->OSTCBStkPtr);
 //#endif
             
-            OSCtxSw();                          		/* Perform a context switch, see os_cpu_a.asm   */
+            Trigger_PendSV();                          		/* Perform a context switch, see os_cpu_a.asm   */
         }        
     }
 		
@@ -121,7 +206,7 @@ void  OSIntExit (void)
         OS_PrioGetHighest();
         if (OSPrioHighRdy != OSPrioCur) {          			 /* No Ctx Sw if current task is highest rdy */
             OSTCBHighRdy   = OSTCBPrioTbl[OSPrioHighRdy];
-            OSCtxSw();                          	 		/* Perform interrupt level ctx switch       */
+            Trigger_PendSV();                          	 		/* Perform interrupt level ctx switch       */
         }				
     }
     
@@ -660,6 +745,7 @@ INT8U  OSTaskCreate (void (*task)(void), OS_STK *ptos, INT8U prio)
     return (OS_ERR_PRIO_EXIST);
 }
 
+
 /*$PAGE*/
 /*
 *********************************************************************************************************
@@ -682,7 +768,17 @@ void  OSStart (void)
 	OSPrioCur     = OSPrioHighRdy;
 	OSTCBHighRdy  = OSTCBPrioTbl[OSPrioHighRdy]; 		 /* Point to highest priority task ready to run    */
 	OSTCBCur      = OSTCBHighRdy;
-	OSStartHighRdy();                            		 /* Execute target specific code to start task     */
+//	OSStartHighRdy();                            		 /* Execute target specific code to start task     */
+
+  
+   
+    NVIC_SetPriority( PendSV_IRQn, 0xFF );
+    __set_PSP(0);
+    
+    Trigger_PendSV();         /* Trigger the PendSV exception (causes context switch) */
+    
+    __enable_irq();
+
 }
 
 /********************* (C) COPYRIGHT 2015 Windy Albert **************************** END OF FILE ********/

@@ -22,12 +22,10 @@
                                        /* In othe words,that is the priority of IDLE TASK, that also...*/
                                        /* is the (number of tasks -1)                                  */
 
-// #define OS_MAX_TASKS             16    /* Max. number of tasks in your application, MUST be >= 2 && <31*/
 
+#define OS_TASK_IDLE_STK_SIZE    32    /* Idle       task stack size (# of OS_STK wide entries)        */
 
-#define OS_TASK_IDLE_STK_SIZE    80    /* Idle       task stack size (# of OS_STK wide entries)        */
-
-#define OS_Q_EN                   1    /* Enable (1) or Disable (0) code generation for QUEUES         */
+#define OS_Q_EN                   0    /* Enable (1) or Disable (0) code generation for QUEUES         */
 #define OS_MAX_QS                 4    /* Max. number of queue control blocks in your application      */
                                        /* 即事件的个数 一个完整的事件包括发送接受等... 目前大于等于2 */
 
