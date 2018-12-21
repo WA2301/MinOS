@@ -18,6 +18,7 @@
 #define   _MINOS_H
 
 #include <minos_cfg.h>
+#include "stm32f4xx.h"
 
 /*
 *********************************************************************************************************
@@ -37,28 +38,19 @@ typedef signed   int   INT32S;                   /* Signed   32 bit quantity    
 typedef unsigned int   OS_STK;                   /* Each stack entry is 32-bit wide                    */
 typedef unsigned int   OS_CPU_SR;                /* Define size of CPU status register (PSR = 32 bits) */
 
-/*
-*********************************************************************************************************
-*                                              Cortex-M1
-*                                      Critical Section Management
-*
-* Method #3:  Disable/Enable interrupts by preserving the state of interrupts.  Generally speaking you
-*             would store the state of the interrupt disable flag in the local variable 'cpu_sr' and then
-*             disable interrupts.  'cpu_sr' is allocated in all of uC/OS-II's functions that need to
-*             disable interrupts.  You would restore the interrupt disable state by copying back 'cpu_sr'
-*             into the CPU's status register.
-*********************************************************************************************************
-*/
 
-//OS_CPU_SR  OS_CPU_SR_Save(void);
-//void       OS_CPU_SR_Restore(OS_CPU_SR cpu_sr);
+
+#define  Trigger_PendSV()        (SCB->ICSR |= ( 1<< SCB_ICSR_PENDSVSET_Pos ) ) 
+
+
+#define  OS_ENTER_CRITICAL()    {cpu_sr = __get_PRIMASK();__disable_irq();}
+#define  OS_EXIT_CRITICAL()     {__set_PRIMASK(cpu_sr);}
+
+#define  CPU_CntTrailZeros(data)    __CLZ(__RBIT(data))
+#define  OS_PrioGetHighest()        (OSPrioHighRdy = (INT8U) CPU_CntTrailZeros( OSRdyTbl ))  
 
 
 
-
-void    OSCtxSw(void);
-void    OSStartHighRdy(void);
-INT32U  CPU_CntTrailZeros(INT32U data);
 
 /*
 *********************************************************************************************************
@@ -181,7 +173,7 @@ OS_EXT  OS_TCB            OSTCBTbl    [OS_LOWEST_PRIO + 1];/* Table of TCBs     
 *********************************************************************************************************
 */
 
-INT8U         OSTaskCreate            (void           (*task)(void),
+void          OSTaskCreate            (void           (*task)(void),
                                        OS_STK          *ptos,
                                        INT8U            prio);
 

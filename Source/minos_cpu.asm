@@ -27,10 +27,9 @@
     EXTERN  OSPrioHighRdy
     EXTERN  OSTCBCur
     EXTERN  OSTCBHighRdy
-
+		
     EXPORT  PendSV_Handler
-                            ;; Value to trigger PendSV exception.
-
+	
 ;********************************************************************************************************
 ;                                      CODE GENERATION DIRECTIVES
 ;********************************************************************************************************
@@ -39,7 +38,7 @@
     THUMB
     REQUIRE8
     PRESERVE8
-		
+
 
 ;********************************************************************************************************
 ;                                         HANDLE PendSV EXCEPTION
@@ -79,54 +78,17 @@
 PendSV_Handler
     CPSID   I                                                   ; Prevent interruption during context switch
     MRS     R0, PSP                                             ; PSP is process stack pointer
-    CBZ     R0, OS_CPU_PendSVHandler_nosave                     ; Skip register save the first time  See:OSStartHighRdy
+    CBZ     R0, _nosave				                            ; Skip register save the first time  See:OSStartHighRdy
 
-	;此处为强行压入PSP栈中，故只能用软件实现，不能push，pop
-    SUBS    R0, R0, #0x20   ;提前将R0指向将来入栈完成后的位置                                    ; Save remaining regs r4-11 on process stack
-    STM     R0, {R4-R11}	;递增方式  ,w为什么只保存这几个？其他的寄存器呢？
-							;R4 -> R0
-							;R5 -> R0+0x04
-							;R6 -> R0+0x08
-							;...
-							;相当于倒序入栈，执行完后R0中数值不变
+    SUBS    R0, R0, #0x20                                       ; Save remaining regs r4-11 on process stack
+    STM     R0, {R4-R11}
 
-    LDR     R1, =OSTCBCur ;将OSTCBCur(其本身也为指针,并非结构体)的地址装入R1                                     ; OSTCBCur->OSTCBStkPtr = SP;
-    LDR     R1, [R1]      ;将OSTCBCur的数值(即实际结构体的地址)
-    STR     R0, [R1]      ;将OSTCBStkPtr的值更改为当前R0的值                                     ; R0 is SP of process being switched out
+    LDR     R1, =OSTCBCur                                       ; OSTCBCur->OSTCBStkPtr = SP;
+    LDR     R1, [R1]
+    STR     R0, [R1]                                            ; R0 is SP of process being switched out
 
                                                                 ; At this point, entire context of process has been saved
-OS_CPU_PendSVHandler_nosave
-	    ;IF {FPU} != "SoftVFP"
-    ;LDR     R0, =OSTCBCur
-;OS_CPU_FP_Reg_Push
-    ;MRS     R1, PSP                                             ; PSP is process stack pointer
-    ;CBZ     R1, OS_CPU_FP_nosave                                ; Skip FP register save the first time
-
-    ;VMRS    R1, FPSCR
-    ;STR R1, [R0, #-4]!
-    ;VSTMDB  R0!, {S0-S31}
-    ;LDR     R1, =OSTCBCur
-    ;LDR     R2, [R1]
-    ;STR     R0, [R2]
-;OS_CPU_FP_nosave
-    ;;No save
-
-    ;LDR     R0, =OSTCBHighRdy
-;OS_CPU_FP_Reg_Pop
-    ;VLDMIA  R0!, {S0-S31}
-    ;LDMIA   R0!, {R1}
-    ;VMSR    FPSCR, R1
-    ;LDR     R1, =OSTCBHighRdy
-    ;LDR     R2, [R1]
-    ;STR     R0, [R2]
-
-    ;ENDIF
-
-
-
-
-
-
+_nosave
     LDR     R0, =OSPrioCur                                      ; OSPrioCur = OSPrioHighRdy;
     LDR     R1, =OSPrioHighRdy
     LDRB    R2, [R1]
@@ -145,12 +107,10 @@ OS_CPU_PendSVHandler_nosave
 	
 	ADDS    R0, R0, #0x20
     MSR     PSP, R0                                             ; Load PSP with new process SP
-   
-   
-   
     ORR     LR, LR, #0x04                                       ; Ensure exception return uses process stack，将bit2置1，返回后将使用PSP
     CPSIE   I
 	
     BX      LR                                                  ; Exception return will restore remaining context
 
+	ALIGN
     END

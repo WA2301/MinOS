@@ -17,30 +17,9 @@
 #define  OS_GLOBALS  																															/* OS_EXT is BLANK.  */
 #include <minos.h>
 
-#if (OS_CPU_ARM_FP_EN == DEF_ENABLED)
-void  OS_CPU_FP_Reg_Push   (INT32U    *stkPtr);
-void  OS_CPU_FP_Reg_Pop    (INT32U    *stkPtr);
-#endif
 
-/*$PAGE*/
-/*
-*********************************************************************************************************
-*                              FIND HIGHEST PRIORITY TASK READY TO RUN
-*
-* Description: This function is called by other uC/OS-II services to determine the highest priority task
-*              that is ready to run.  The global variable 'OSPrioHighRdy' is changed accordingly.
-*
-* Arguments  : none
-*
-* Returns    : none
-*
-*********************************************************************************************************
-*/
 
-static  void  OS_PrioGetHighest (void)
-{
-    OSPrioHighRdy = (INT8U) CPU_CntTrailZeros( OSRdyTbl );
-}
+
 
 /*$PAGE*/
 /*
@@ -68,13 +47,8 @@ void  OS_Sched (void)
         OS_PrioGetHighest();
         if (OSPrioHighRdy != OSPrioCur) {         	 	 /* No Ctx Sw if current task is highest rdy     */
             OSTCBHighRdy = OSTCBPrioTbl[OSPrioHighRdy];
-
-//#if (OS_CPU_ARM_FP_EN == DEF_ENABLED)
-//            OS_CPU_FP_Reg_Push(OSTCBCur->OSTCBStkPtr);   //OSTCBCur是什么时候赋值的？在pend中断里！
-//            OS_CPU_FP_Reg_Pop(OSTCBHighRdy->OSTCBStkPtr);
-//#endif
             
-            OSCtxSw();                          		/* Perform a context switch, see os_cpu_a.asm   */
+            Trigger_PendSV();                            /* Perform a context switch, see os_cpu_a.asm   */
         }        
     }
 		
@@ -121,7 +95,7 @@ void  OSIntExit (void)
         OS_PrioGetHighest();
         if (OSPrioHighRdy != OSPrioCur) {          			 /* No Ctx Sw if current task is highest rdy */
             OSTCBHighRdy   = OSTCBPrioTbl[OSPrioHighRdy];
-            OSCtxSw();                          	 		/* Perform interrupt level ctx switch       */
+            Trigger_PendSV();                          	 		/* Perform interrupt level ctx switch       */
         }				
     }
     
@@ -224,11 +198,11 @@ void  OSTimeDly (INT16U ticks)
 
 void  OS_TaskIdle (void)
 {
-    INT8U i = 0;
+    
     for (;;) 
     {
         //Do nothing.
-        i++;
+        
     }
 }
 
@@ -639,25 +613,29 @@ OS_STK *OSTaskStkInit (void (*task)(void), OS_STK *ptos,INT8U prio)
 *********************************************************************************************************
 */
 
-INT8U  OSTaskCreate (void (*task)(void), OS_STK *ptos, INT8U prio)
+void  OSTaskCreate (void (*task)(void), OS_STK *ptos, INT8U prio)
 {
     OS_STK    *psp;
-    INT8U      err;
-    OS_CPU_SR  cpu_sr = 0;
+//    INT8U      err;
+//    OS_CPU_SR  cpu_sr = 0;
 
-    OS_ENTER_CRITICAL();
+//    OS_ENTER_CRITICAL();
 		
     if (OSTCBPrioTbl[prio] == (OS_TCB *)0) { /* Make sure task doesn't already exist at this priority  */
 		OSTCBPrioTbl[prio] =  (OS_TCB *)1;   /* Reserve the priority to prevent others from doing ...  */
                                              /* ... the same thing until task is created.              */
-        OS_EXIT_CRITICAL();
+//        OS_EXIT_CRITICAL();
         psp = OSTaskStkInit(task, ptos,prio);              		/* Initialize the task's stack         */				
-        err = OS_TCBInit( prio, psp );				
-        return (err);
+              OS_TCBInit( prio, psp );				
+//        return (err);
+    }
+    else
+    {
+        while(1);               /* Error: Minos Panic OS_ERR_PRIO_EXIST           */
     }
 
-    OS_EXIT_CRITICAL();
-    return (OS_ERR_PRIO_EXIST);
+//    OS_EXIT_CRITICAL();
+//    return (OS_ERR_PRIO_EXIST);
 }
 
 /*$PAGE*/
@@ -682,7 +660,14 @@ void  OSStart (void)
 	OSPrioCur     = OSPrioHighRdy;
 	OSTCBHighRdy  = OSTCBPrioTbl[OSPrioHighRdy]; 		 /* Point to highest priority task ready to run    */
 	OSTCBCur      = OSTCBHighRdy;
-	OSStartHighRdy();                            		 /* Execute target specific code to start task     */
+	
+    /** OSStartHighRdy **/
+    NVIC_SetPriority( PendSV_IRQn, 0xFF );
+    __set_PSP(0);
+    
+    Trigger_PendSV();         /* Trigger the PendSV exception (causes context switch) */
+    
+    __enable_irq();
 }
 
 /********************* (C) COPYRIGHT 2015 Windy Albert **************************** END OF FILE ********/
