@@ -21,7 +21,7 @@
                                        /* ... MUST NEVER be higher than 31!                            */
                                        /* In othe words,that is the priority of IDLE TASK, that also...*/
                                        /* is the (number of tasks -1)                                  */
-
+                                        //尽量根据需求设定连续的优先级，已节省内存空间
 
 #define OS_TASK_IDLE_STK_SIZE   128    /* Idle       task stack size (# of OS_STK wide entries)        */
 

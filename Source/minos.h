@@ -18,7 +18,7 @@
 #define   _MINOS_H
 
 #include <minos_cfg.h>
-#include "stm32f4xx.h"
+// #include "stm32f4xx.h"
 
 /*
 *********************************************************************************************************
@@ -39,15 +39,30 @@ typedef unsigned int   OS_STK;                   /* Each stack entry is 32-bit w
 typedef unsigned int   OS_CPU_SR;                /* Define size of CPU status register (PSR = 32 bits) */
 
 
+// #if OS_CRITICAL_METHOD == 1  //不保护中断开启状态
+// #define OS_ENTER_CRITICAL() __asm__("cli")  
+// #define OS_EXIT_CRITICAL() __asm__("sti")  
+// #endif  
+  
+// #if OS_CRITICAL_METHOD == 2  //入栈保护中断开启状态
+// #define OS_ENTER_CRITICAL() __asm__("pushf \n\t cli")  
+// #define OS_EXIT_CRITICAL() __asm__("popf")  
+// #endif  
+  
+// #if OS_CRITICAL_METHOD == 3  //用变量保护中断开启状态
+// #define OS_ENTER_CRITICAL() (cpu_sr = OSCPUSaveSR())  
+// #define OS_EXIT_CRITICAL() (OSCPURestoreSR(cpu_sr))  
+// #endif  
 
-#define  Trigger_PendSV()        (SCB->ICSR |= ( 1<< SCB_ICSR_PENDSVSET_Pos ) ) 
 
-
-#define  OS_ENTER_CRITICAL()    {cpu_sr = __get_PRIMASK();__disable_irq();}
-#define  OS_EXIT_CRITICAL()     {__set_PRIMASK(cpu_sr);}
-
-#define  CPU_CntTrailZeros(data)    __CLZ(__RBIT(data))
-#define  OS_PrioGetHighest()        (OSPrioHighRdy = (INT8U) CPU_CntTrailZeros( OSRdyTbl ))  
+#define  Trigger_PendSV()              // (SCB->ICSR |= ( 1<< SCB_ICSR_PENDSVSET_Pos ) ) 
+//
+//官方解释：若进入中断前已将中断关闭则不希望执行完后将中断开启
+#define  OS_ENTER_CRITICAL()           // {cpu_sr = __get_PRIMASK();__disable_irq();}
+#define  OS_EXIT_CRITICAL()            // {__set_PRIMASK(cpu_sr);}
+//
+#define  CPU_CntTrailZeros(data)       // __CLZ(__RBIT(data))
+#define  OS_PrioGetHighest()           // (OSPrioHighRdy = (INT8U) CPU_CntTrailZeros( OSRdyTbl ))  
 
 
 
@@ -78,11 +93,9 @@ typedef unsigned int   OS_CPU_SR;                /* Define size of CPU status re
 */
 #define  OS_STAT_RDY               0x00u    /* Ready to run                                            */
 #define  OS_STAT_PEND_Q            0x04u    /* Pending on queue                                        */
-#define  OS_STAT_SUSPEND           0x08u    /* Task is suspended                                       */
 
-#define  OS_STAT_PEND_OK              0u    /* Pending status OK, not pending, or pending complete     */
+#define  OS_STAT_PEND_OK              0u    /* Pending status OK, 1-not pending, or 2-pending complete     */
 #define  OS_STAT_PEND_TO              1u    /* Pending timed out                                       */
-#define  OS_STAT_PEND_ABORT           2u    /* Pending aborted                                         */
 
 
 /*
@@ -93,7 +106,7 @@ typedef unsigned int   OS_CPU_SR;                /* Define size of CPU status re
 #define OS_ERR_NONE                   0u
 #define OS_ERR_PEND_ISR               2u
 #define OS_ERR_TIMEOUT               10u
-#define OS_ERR_PEND_ABORT            14u
+// #define OS_ERR_PEND_ABORT            14u
 #define OS_ERR_Q_FULL                30u
 #define OS_ERR_Q_EMPTY               31u
 #define OS_ERR_PRIO_EXIST            40u
@@ -134,7 +147,7 @@ typedef struct os_tcb {
 
     INT16U           OSTCBDly;              /* Nbr ticks to delay task or, timeout waiting for event   */
     INT8U            OSTCBStat;             /* Task      status                                        */
-    INT8U            OSTCBStatPend;         /* Task PEND status                                        */
+    INT8U            OSTCBStatPend; //相当于Pend结果OK / TimeOut         /* Task PEND status                                        */
     INT8U            OSTCBPrio;             /* Task priority (0 == highest)                            */
 } OS_TCB;
 

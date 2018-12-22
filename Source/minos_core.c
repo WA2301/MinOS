@@ -125,19 +125,29 @@ void  OSTimeTick (void)
     ptcb = OSTCBList;                                  /* Point at first TCB in TCB list               */
     while (ptcb->OSTCBPrio != OS_TASK_IDLE_PRIO) {     /* Go through all TCBs in TCB list              */
         OS_ENTER_CRITICAL();
+
+        //1、任务若延时为0不会进入到这里进行切换
+        //2、Pend函数若超时时间一开始就为0，则不会进入到下面分支，即该任务不会因为“时间”原因
+        //   而就绪，相当于永远Pend
         if (ptcb->OSTCBDly != 0) {                     /* No, Delayed or waiting for event with TO     */
+            
+            //即只要该任务Dly还有剩余，不管任务状态OSTCBStat为何都不会就绪...
             if (--ptcb->OSTCBDly == 0) {               /* Decrement nbr of ticks to end of delay       */
                                                        /* Check for timeout                            */
+                
+                //是否还在等待Q？
                 if((ptcb->OSTCBStat & OS_STAT_PEND_Q) != OS_STAT_RDY) {
-                    ptcb->OSTCBStat  &= ~(INT8U)OS_STAT_PEND_Q;          	 /* Yes, Clear status flag   */
-                    ptcb->OSTCBStatPend = OS_STAT_PEND_TO;                 /* Indicate PEND timeout    */
+                    ptcb->OSTCBStat  &= ~(INT8U)OS_STAT_PEND_Q;//清空“等待Q中”标志，若该任务只是在等待Q，则该
+                                                               //语句相当于将任务设为“就绪”          	 /* Yes, Clear status flag   */
+                    ptcb->OSTCBStatPend = OS_STAT_PEND_TO; //等待状态：已超时 （已就绪，凭此标志判定是如何就绪的）               /* Indicate PEND timeout    */
                 } 
                 else 
                 {
                     ptcb->OSTCBStatPend = OS_STAT_PEND_OK;
                 }
 
-                if ((ptcb->OSTCBStat & OS_STAT_SUSPEND) == OS_STAT_RDY) {  /* Is task suspended?       */
+                //任务已就绪：超时时间到、Q已收到？
+                if (ptcb->OSTCBStat == OS_STAT_RDY) {  /* Is task suspended?       */
                     OSRdyTbl |= ( 1 << ptcb->OSTCBPrio );                  /* No,  Make ready          */
                 }
             }
