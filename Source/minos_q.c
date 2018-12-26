@@ -19,118 +19,6 @@
 #if OS_Q_EN > 0
 void  OS_Sched (void);
 
-/*$PAGE*/
-/*
-*********************************************************************************************************
-*                                   REMOVE TASK FROM EVENT WAIT LIST
-*
-* Description: Remove a task from an event's wait list.
-*
-* Arguments  : ptcb     is a pointer to the task to remove.
-*
-*              pevent   is a pointer to the event control block.
-*
-* Returns    : none
-*
-*********************************************************************************************************
-*/
-// static void  OS_EventTaskRemove (OS_TCB   *ptcb, OS_EVENT *pevent)
-// {
-//     pevent->OSEventTbl &= ~( 1 << ptcb->OSTCBPrio ); /* Remove task from wait list                  */
-// }
-
-/*
-*********************************************************************************************************
-*                             MAKE TASK READY TO RUN BASED ON EVENT OCCURING
-*
-* Description: This function is called by other uC/OS-II services and is used to ready a task that was
-*              waiting for an event to occur.
-*
-* Arguments  : pevent      is a pointer to the event control block corresponding to the event.
-*
-*              pmsg        is a pointer to a message.  This pointer is used by message oriented services
-*                          such as MAILBOXEs and QUEUEs.  The pointer is not used when called by other
-*                          service functions.
-*
-*              msk         is a mask that is used to clear the status byte of the TCB.  For example,
-*                          OSSemPost() will pass OS_STAT_SEM, OSMboxPost() will pass OS_STAT_MBOX etc.
-*
-*              pend_stat   is used to indicate the readied task's pending status:
-*
-*                          OS_STAT_PEND_OK      Task ready due to a post (or delete), not a timeout or
-*                                               an abort.
-*                          OS_STAT_PEND_ABORT   Task ready due to an abort.
-*
-* Returns    : none
-*
-* Note       : This function is INTERNAL to uC/OS-II and your application should not call it.
-*********************************************************************************************************
-*/
-
-// static INT8U  OS_EventTaskRdy (OS_EVENT *pevent, void *pmsg)
-// {
-//     OS_TCB  *ptcb;
-//     INT8U    prio;
-//                                                         /* Find HPT waiting for message                */
-//     prio                  = (INT8U) CPU_CntTrailZeros( pevent-> OSEventTbl );
-
-//     ptcb                  =  OSTCBPrioTbl[prio];        /* Point to this task's OS_TCB                 */
-//     ptcb->OSTCBDly        =  0;                         /* Prevent OSTimeTick() from readying task     */
-		
-//     ptcb->OSTCBMsg        =  pmsg;                      /* Send message directly to waiting task       */
-		
-//     ptcb->OSTCBStat      &= ~OS_STAT_PEND_Q;//若该任务只是在等待Q，则此语句相当于将任务就绪了                       /* Clear bit associated with event type        */
-//     ptcb->OSTCBStatPend   =  OS_STAT_PEND_OK;                 /* Set pend status of post or abort            */
-//                                                         /* See if task is ready (could be susp'd)      */
-//     if (ptcb->OSTCBStat == OS_STAT_RDY) {
-//         OSRdyTbl |= ( 1 << ptcb->OSTCBPrio );           /* Put task in the ready to run list           */
-//     }
-
-//     // OS_EventTaskRemove(ptcb, pevent);                   /* Remove this task from event   wait list     */
-//     pevent->OSEventTbl &= ~( 1 << ptcb->OSTCBPrio ); /* Remove task from wait list                  */
-//     return (prio);
-// }
-
-/*$PAGE*/
-/*
-*********************************************************************************************************
-*                                   MAKE TASK WAIT FOR EVENT TO OCCUR
-*
-* Description: This function is called by other uC/OS-II services to suspend a task because an event has
-*              not occurred.
-*
-* Arguments  : pevent   is a pointer to the event control block for which the task will be waiting for.
-*
-* Returns    : none
-*
-*********************************************************************************************************
-*/
-// static void  OS_EventTaskWait (OS_EVENT *pevent)
-// {
-//     OSTCBCur->OSTCBEventPtr               = pevent;                 /* Store ptr to ECB in TCB         */
-
-//     pevent->OSEventTbl |= ( 1 << OSTCBCur->OSTCBPrio );/* Put task in waiting list        */
-//     OSRdyTbl           &= ~( 1<< OSTCBCur->OSTCBPrio );/* Task no longer ready                              */
-// }
-
-/*
-*********************************************************************************************************
-*                                 INITIALIZE EVENT CONTROL BLOCK'S WAIT LIST
-*
-* Description: This function is called by other uC/OS-II services to initialize the event wait list.
-*
-* Arguments  : pevent    is a pointer to the event control block allocated to the event.
-*
-* Returns    : none
-*
-* Note       : This function is INTERNAL to uC/OS-II and your application should not call it.
-*********************************************************************************************************
-*/
-// static void  OS_EventWaitListInit (OS_EVENT *pevent)
-// {
-//     pevent->OSEventTbl = 0; /* No task waiting on event                           */
-// }
-
 /*
 *********************************************************************************************************
 *                                        CREATE A MESSAGE QUEUE
@@ -153,42 +41,29 @@ void  OS_Sched (void);
 OS_EVENT  *OSQCreate (void **start, INT16U size)
 {
     OS_EVENT  *pevent;
-    OS_Q      *pq;
     OS_CPU_SR  cpu_sr = 0;
 
     OS_ENTER_CRITICAL();
-    pevent = OSEventFreeList;                    /* Get next free event control block                  */
     if (OSEventFreeList != (OS_EVENT *)0) {      /* See if pool of free ECB pool was empty             */
+        pevent = OSEventFreeList;                    /* Get next free event control block                  */
         OSEventFreeList = (OS_EVENT *)OSEventFreeList->OSEventPtr;
     }
-    OS_EXIT_CRITICAL();
-    if (pevent != (OS_EVENT *)0) {               /* See if we have an event control block              */
-        OS_ENTER_CRITICAL();
-        pq = OSQFreeList;                        /* Get a free queue control block                     */
-        if (pq != (OS_Q *)0) {                   /* Were we able to get a queue control block ?        */
-            OSQFreeList            = OSQFreeList->OSQPtr; /* Yes, Adjust free list pointer to next free*/
-            OS_EXIT_CRITICAL();
-            pq->OSQStart           = start;               /*      Initialize the queue                 */
-            pq->OSQEnd             = &start[size];
-            pq->OSQIn              = start;
-            pq->OSQOut             = start;
-            pq->OSQSize            = size;
-            pq->OSQEntries         = 0;
-						
-            pevent->OSEventPtr     = pq;
-						
-            // OS_EventWaitListInit(pevent);                 /*      Initalize the wait list              */
-
-            pevent->OSEventTbl     = 0; /* No task waiting on event                           */
-
-
-        } else {
-            pevent->OSEventPtr = (void *)OSEventFreeList; /* No,  Return event control block on error  */
-            OSEventFreeList    = pevent;
-            OS_EXIT_CRITICAL();
-            pevent = (OS_EVENT *)0;
-        }
+    else
+    {
+        while(1);//No enough free ECB
     }
+    
+    pevent->OSQStart           = start;               /*      Initialize the queue                 */
+    pevent->OSQEnd             = &start[size];
+    pevent->OSQIn              = start;
+    pevent->OSQOut             = start;
+    pevent->OSQSize            = size;
+    pevent->OSNMsgs         = 0;
+
+    pevent->OSEventWaitTbl     = 0; /* No task waiting on event                           */
+
+    OS_EXIT_CRITICAL();
+
     return (pevent);
 }
 
@@ -212,12 +87,6 @@ OS_EVENT  *OSQCreate (void **start, INT16U size)
 *                            OS_ERR_NONE         The call was successful and your task received a
 *                                                message.
 *                            OS_ERR_TIMEOUT      A message was not received within the specified 'timeout'.
-*                            OS_ERR_PEND_ABORT   The wait on the queue was aborted.
-*                            OS_ERR_EVENT_TYPE   You didn't pass a pointer to a queue
-*                            OS_ERR_PEVENT_NULL  If 'pevent' is a NULL pointer
-*                            OS_ERR_PEND_ISR     If you called this function from an ISR and the result
-*                                                would lead to a suspension.
-*                            OS_ERR_PEND_LOCKED  If you called this function with the scheduler is locked
 *
 * Returns    : != (void *)0  is a pointer to the message received
 *              == (void *)0  if you received a NULL pointer message or,
@@ -231,7 +100,6 @@ OS_EVENT  *OSQCreate (void **start, INT16U size)
 void  *OSQPend (OS_EVENT *pevent, INT16U timeout, INT8U *perr)
 {
     void      *pmsg;
-    OS_Q      *pq;
 
     OS_CPU_SR  cpu_sr = 0;
 
@@ -241,17 +109,16 @@ void  *OSQPend (OS_EVENT *pevent, INT16U timeout, INT8U *perr)
     }
 		
     OS_ENTER_CRITICAL();
-    pq = (OS_Q *)pevent->OSEventPtr;             /* Point at queue control block                       */
     
     //消息队列中有现成的，直接返回结果，即若队列中有多个消息，该任务会一口气执行完所有消息再挂起
-    if (pq->OSQEntries > 0) {                    /* See if any messages in the queue                   */
+    if (pevent->OSNMsgs > 0) {                    /* See if any messages in the queue                   */
         
         //正常出列
         //取出队列中地址数值，并将指针下移一个单位，将已有数量减一
-        pmsg = *pq->OSQOut++;                    /* Yes, extract oldest message from the queue         */
-        pq->OSQEntries--;                        /* Update the number of entries in the queue          */
-        if (pq->OSQOut == pq->OSQEnd) {          /* Wrap OUT pointer if we are at the end of the queue */
-            pq->OSQOut = pq->OSQStart;
+        pmsg = *pevent->OSQOut++;                    /* Yes, extract oldest message from the queue         */
+        pevent->OSNMsgs--;                        /* Update the number of entries in the queue          */
+        if (pevent->OSQOut == pevent->OSQEnd) {          /* Wrap OUT pointer if we are at the end of the queue */
+            pevent->OSQOut = pevent->OSQStart;
         }
         OS_EXIT_CRITICAL();
         *perr = OS_ERR_NONE;
@@ -265,11 +132,8 @@ void  *OSQPend (OS_EVENT *pevent, INT16U timeout, INT8U *perr)
     // OS_EventTaskWait(pevent);                    /* Suspend task until event or timeout occurs         */
     
     OSTCBCur->OSTCBEventPtr      = pevent;                 /* Store ptr to ECB in TCB         */
-    pevent->OSEventTbl          |=  ( 1<< OSTCBCur->OSTCBPrio );/* Put task in waiting list        */
+    pevent->OSEventWaitTbl          |=  ( 1<< OSTCBCur->OSTCBPrio );/* Put task in waiting list        */
     OSRdyTbl                    &= ~( 1<< OSTCBCur->OSTCBPrio );/* Task no longer ready                              */
-
-    
-    
     
     
     OS_EXIT_CRITICAL();
@@ -293,7 +157,7 @@ void  *OSQPend (OS_EVENT *pevent, INT16U timeout, INT8U *perr)
         case OS_STAT_PEND_TO:
         default:
             //  OS_EventTaskRemove(OSTCBCur, pevent);
-             pevent->OSEventTbl &= ~( 1 << OSTCBCur->OSTCBPrio ); /* Remove task from wait list                  */
+             pevent->OSEventWaitTbl &= ~( 1 << OSTCBCur->OSTCBPrio ); /* Remove task from wait list                  */
              pmsg = (void *)0;
             *perr =  OS_ERR_TIMEOUT;                  /* Indicate that we didn't get event within TO   */
              break;
@@ -334,7 +198,6 @@ void  *OSQPend (OS_EVENT *pevent, INT16U timeout, INT8U *perr)
 
 INT8U  OSQPost (OS_EVENT *pevent, void *pmsg)
 {
-    OS_Q      *pq;
     OS_TCB  *ptcb;
     INT8U    prio;
     OS_CPU_SR  cpu_sr = 0;
@@ -343,15 +206,15 @@ INT8U  OSQPost (OS_EVENT *pevent, void *pmsg)
 
     //有任务正在等待该Q！
     //若中断中连续Post会出现覆盖？不会入列？YES!
-    if (pevent->OSEventTbl != 0) {                     /* See if any task pending on queue             */
+    if (pevent->OSEventWaitTbl != 0) {                     /* See if any task pending on queue             */
                                                        /* Ready highest priority task waiting on event */
         //该次Post只会喂饱一个任务（即等待该事件的任务中优先级最高的那个）
         // OS_EventTaskRdy(pevent, pmsg);
 
                                                         /* Find HPT waiting for message                */
-        prio                  = (INT8U) CPU_CntTrailZeros( pevent-> OSEventTbl );
+        prio                  = (INT8U) CPU_CntTrailZeros( pevent-> OSEventWaitTbl );
 
-        ptcb                  =  OSTCBPrioTbl[prio];        /* Point to this task's OS_TCB                 */
+        ptcb                  =  &OSTCBTbl[prio];        /* Point to this task's OS_TCB                 */
         ptcb->OSTCBDly        =  0;                         /* Prevent OSTimeTick() from readying task     */
             
         ptcb->OSTCBMsg        =  pmsg;                      /* Send message directly to waiting task       */
@@ -364,12 +227,7 @@ INT8U  OSQPost (OS_EVENT *pevent, void *pmsg)
         }
 
         // OS_EventTaskRemove(ptcb, pevent);                   /* Remove this task from event   wait list     */
-        pevent->OSEventTbl &= ~( 1 << ptcb->OSTCBPrio ); /* Remove task from wait list                  */
-
-
-
-
-
+        pevent->OSEventWaitTbl &= ~( 1 << ptcb->OSTCBPrio ); /* Remove task from wait list                  */
 
 
 
@@ -379,25 +237,20 @@ INT8U  OSQPost (OS_EVENT *pevent, void *pmsg)
         return (OS_ERR_NONE);
     }
     
-
-    pq = (OS_Q *)pevent->OSEventPtr;                   /* Point to queue control block                 */
-    if (pq->OSQEntries >= pq->OSQSize) {               /* Make sure queue is not full                  */
+    if (pevent->OSNMsgs >= pevent->OSQSize) {               /* Make sure queue is not full                  */
         OS_EXIT_CRITICAL();
         return (OS_ERR_Q_FULL);//消息队列已满，需增大数组
     }
 
     //正常入列
-    *pq->OSQIn++ = pmsg;                               /* Insert message into queue                    */
-    pq->OSQEntries++;                                  /* Update the nbr of entries in the queue       */
-    if (pq->OSQIn == pq->OSQEnd) {                     /* Wrap IN ptr if we are at end of queue        */
-        pq->OSQIn = pq->OSQStart;
+    *pevent->OSQIn++ = pmsg;                               /* Insert message into queue                    */
+    pevent->OSNMsgs++;                                  /* Update the nbr of entries in the queue       */
+    if (pevent->OSQIn == pevent->OSQEnd) {                     /* Wrap IN ptr if we are at end of queue        */
+        pevent->OSQIn = pevent->OSQStart;
     }
     OS_EXIT_CRITICAL();
     return (OS_ERR_NONE);
 }
 
 #endif
-
-
 /********************* (C) COPYRIGHT 2015 Windy Albert **************************** END OF FILE ********/
-

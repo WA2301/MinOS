@@ -23,8 +23,6 @@
 ;                                           PUBLIC FUNCTIONS
 ;********************************************************************************************************
 
-    EXTERN  OSPrioCur					       					; External references
-    EXTERN  OSPrioHighRdy
     EXTERN  OSTCBCur
     EXTERN  OSTCBHighRdy
 		
@@ -38,7 +36,6 @@
     THUMB
     REQUIRE8
     PRESERVE8
-
 
 ;********************************************************************************************************
 ;                                         HANDLE PendSV EXCEPTION
@@ -89,20 +86,13 @@ PendSV_Handler
 
                                                                 ; At this point, entire context of process has been saved
 _nosave
-    LDR     R0, =OSPrioCur                                      ; OSPrioCur = OSPrioHighRdy;
-    LDR     R1, =OSPrioHighRdy
-    LDRB    R2, [R1]
-    STRB    R2, [R0]
-
-    LDR     R0, =OSTCBCur                                       ; OSTCBCur  = OSTCBHighRdy;
+	LDR     R0, =OSTCBCur                                       ; OSTCBCur  = OSTCBHighRdy;
     LDR     R1, =OSTCBHighRdy
     LDR     R2, [R1]
     STR     R2, [R0]
 
     LDR     R0, [R2]                                            ; R0 is new process SP; SP = OSTCBHighRdy->OSTCBStkPtr;
     LDM     R0, {R4-R11}                                        ; Restore r4-11 from new process stack
-    
-	
 	
 	
 	ADDS    R0, R0, #0x20

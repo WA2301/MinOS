@@ -17,7 +17,27 @@
 #define  OS_GLOBALS  																															/* OS_EXT is BLANK.  */
 #include <minos.h>
 
+void  OS_Sched (void);
 
+/**
+  * @brief  This function handles SysTick exception.
+  * @param  None
+  * @retval None
+  */
+void SysTick_Handler(void)
+{
+    OSIntEnter();
+    OSTimeTick();
+    OSIntExit();
+}
+
+
+//void OS_TCBGetHighest( void )
+//{
+//    INT8U OSPrioHighRdy;
+//    OSPrioHighRdy = (INT8U) CPU_CntTrailZeros( OSRdyTbl );
+//    OSTCBHighRdy  = &OSTCBTbl[ (INT8U) CPU_CntTrailZeros( OSRdyTbl  )];
+//}
 
 
 
@@ -44,61 +64,13 @@ void  OS_Sched (void)
     OS_ENTER_CRITICAL();
 		
     if (OSIntNesting == 0) {                            /* Schedule only if all ISRs done and ...       */
-        OS_PrioGetHighest();
-        if (OSPrioHighRdy != OSPrioCur) {         	 	 /* No Ctx Sw if current task is highest rdy     */
-            OSTCBHighRdy = OSTCBPrioTbl[OSPrioHighRdy];
-            
+        /** OS_TCBGetHighest **/
+        OSTCBHighRdy  = &OSTCBTbl[ (INT8U) CPU_CntTrailZeros( OSRdyTbl  )];
+        if (OSTCBHighRdy != OSTCBCur) {         	 	 /* No Ctx Sw if current task is highest rdy     */
             Trigger_PendSV();                            /* Perform a context switch, see os_cpu_a.asm   */
         }        
     }
 		
-    OS_EXIT_CRITICAL();
-}
-
-/*$PAGE*/
-/*
-*********************************************************************************************************
-*                                           ENTER/EXIT ISR
-*
-* Description: This function is used to notify uC/OS-II that you are about to service an interrupt
-*              service routine (ISR).  This allows uC/OS-II to keep track of interrupt nesting and thus
-*              only perform rescheduling at the last nested ISR.
-*
-* Arguments  : none
-*
-* Returns    : none
-*
-* Notes      : You MUST invoke OSIntEnter() and OSIntExit() in pair.  In other words, for every call
-*              to OSIntEnter() at the beginning of the ISR you MUST have a call to OSIntExit() at the
-*              end of the ISR.
-*              
-*********************************************************************************************************
-*/
-
-void  OSIntEnter (void)//不可关中断，否则将无法实现硬嵌套
-{
-    if (OSIntNesting < 255u) {
-        OSIntNesting++;                      							/* Increment ISR nesting level               */
-    }
-}
-
-void  OSIntExit (void)
-{
-    OS_CPU_SR  cpu_sr = 0;
-    
-    OS_ENTER_CRITICAL(); //为什么需要保存？有其他关中断的可能？
-    
-    if (OSIntNesting > 0) {                            		 /* Prevent OSIntNesting from wrapping       */
-        OSIntNesting--;
-    }
-    if (OSIntNesting == 0) {                           		 /* Reschedule only if all ISRs complete ... */
-        OS_PrioGetHighest();
-        if (OSPrioHighRdy != OSPrioCur) {          			 /* No Ctx Sw if current task is highest rdy */
-            OSTCBHighRdy   = OSTCBPrioTbl[OSPrioHighRdy];
-            Trigger_PendSV();                          	 		/* Perform interrupt level ctx switch       */
-        }				
-    }
-    
     OS_EXIT_CRITICAL();
 }
 
@@ -121,10 +93,11 @@ void  OSTimeTick (void)
 {
     OS_TCB    *ptcb;
     OS_CPU_SR  cpu_sr = 0;
+    
+    OS_ENTER_CRITICAL();
 
     ptcb = OSTCBList;                                  /* Point at first TCB in TCB list               */
     while (ptcb->OSTCBPrio != OS_TASK_IDLE_PRIO) {     /* Go through all TCBs in TCB list              */
-        OS_ENTER_CRITICAL();
 
         //1、任务若延时为0不会进入到这里进行切换
         //2、Pend函数若超时时间一开始就为0，则不会进入到下面分支，即该任务不会因为“时间”原因
@@ -134,12 +107,12 @@ void  OSTimeTick (void)
             //即只要该任务Dly还有剩余，不管任务状态OSTCBStat为何都不会就绪...
             if (--ptcb->OSTCBDly == 0) {               /* Decrement nbr of ticks to end of delay       */
                                                        /* Check for timeout                            */
-                
+#if OS_Q_EN > 0                
                 //是否还在等待Q？
                 if((ptcb->OSTCBStat & OS_STAT_PEND_Q) != OS_STAT_RDY) {
                     ptcb->OSTCBStat  &= ~(INT8U)OS_STAT_PEND_Q;//清空“等待Q中”标志，若该任务只是在等待Q，则该
                                                                //语句相当于将任务设为“就绪”          	 /* Yes, Clear status flag   */
-                    ptcb->OSTCBStatPend = OS_STAT_PEND_TO; //等待状态：已超时 （已就绪，凭此标志判定是如何就绪的）               /* Indicate PEND timeout    */
+                    ptcb->OSTCBStatPend = OS_STAT_PEND_TO;     //等待状态：已超时 （已就绪，凭此标志判定是如何就绪的）               /* Indicate PEND timeout    */
                 } 
                 else 
                 {
@@ -147,14 +120,17 @@ void  OSTimeTick (void)
                 }
 
                 //任务已就绪：超时时间到、Q已收到？
-                if (ptcb->OSTCBStat == OS_STAT_RDY) {  /* Is task suspended?       */
+                if (ptcb->OSTCBStat == OS_STAT_RDY)
+#endif        
+                {  /* Is task suspended?       */
                     OSRdyTbl |= ( 1 << ptcb->OSTCBPrio );                  /* No,  Make ready          */
                 }
             }
         }
         ptcb = ptcb->OSTCBNext;                        /* Point at next TCB in TCB list                */
-        OS_EXIT_CRITICAL();
     }
+    
+    OS_EXIT_CRITICAL();
 }
 
 /*$PAGE*/
@@ -177,11 +153,13 @@ void  OSTimeDly (INT16U ticks)
 {
     OS_CPU_SR  cpu_sr = 0;
 
-    if (OSIntNesting > 0) {                      /* See if trying to call from an ISR                  */
+    if (OSIntNesting > 0)                       /* See if trying to call from an ISR                  */
+    {
         return;
     }
     
-    if (ticks > 0) {                             /* 0 means no delay!                                  */
+    if (ticks > 0)                              /* 0 means no delay!                                  */
+    {
         OS_ENTER_CRITICAL();
 
         OSRdyTbl &= ~( 1<< OSTCBCur->OSTCBPrio );/* Delay current task                                 */ 
@@ -206,13 +184,12 @@ void  OSTimeDly (INT16U ticks)
 *********************************************************************************************************
 */
 
-void  OS_TaskIdle (void)
+void __attribute__((weak)) OS_TaskIdle (void) 
 {
     
     for (;;) 
     {
         //Do nothing.
-        
     }
 }
 
@@ -232,56 +209,36 @@ void  OS_TaskIdle (void)
 
 void  OSInit (void)
 {
-    INT8U    i;		
-    OS_TCB  *ptcb1,*ptcb2;
+    INT8U    i;
 		
 #if OS_Q_EN > 0
-    OS_EVENT  *pevent1,*pevent2;
-    OS_Q   	  *pq1,	   *pq2;
-#endif	
-		
-    OSIntNesting  = 0;
-
-    OSRdyTbl      = 0;            /* Clear the ready list                     */
-    OSPrioCur     = 0;
-    OSPrioHighRdy = 0;
-		
-    OSTCBHighRdy  = (OS_TCB *)0;
-    OSTCBCur      = (OS_TCB *)0;		
-	
-																													 /* Initialize the free list of OS_TCBs      */
-    ptcb1 = &OSTCBTbl[0];
-    ptcb2 = &OSTCBTbl[1];
-    for (i = 0; i < (OS_LOWEST_PRIO + 1); i++) {                 /* Init. list of free TCBs            */
-        ptcb1->OSTCBNext = ptcb2;
-        ptcb1++;
-        ptcb2++;
-    }
-    ptcb1->OSTCBNext = (OS_TCB *)0;                              /* Last OS_TCB                        */
-    OSTCBList        = (OS_TCB *)0;                       /* TCB lists initializations          */
-    OSTCBFreeList    = &OSTCBTbl[0];	
-
-#if OS_Q_EN > 0		
-    pevent1 = &OSEventTbl[0];															 /* Initialize the free list of OS_EVENTs    */
+    OS_EVENT  *pevent1,*pevent2;    
+    
+    pevent1 = &OSEventTbl[0];           /* Initialize the free list of OS_EVENTs    */
     pevent2 = &OSEventTbl[1];
-    for (i = 0; i < (OS_MAX_QS - 1); i++) {
-        pevent1->OSEventPtr     = pevent2;
+    for (i = 0; i < (OS_MAX_QS - 1); i++) 
+    {
+        pevent1->OSEventPtr = pevent2;
         pevent1++;
         pevent2++;
     }
-    pevent1->OSEventPtr             = (OS_EVENT *)0;
-    OSEventFreeList                 = &OSEventTbl[0];		
-
-    pq1 = &OSQTbl[0];																			 /* Initialize the message queue structures  */
-    pq2 = &OSQTbl[1];
-    for (i = 0; i < (OS_MAX_QS - 1); i++) {          			 /* Init. list of free QUEUE control blocks  */
-        pq1->OSQPtr = pq2;
-        pq1++;
-        pq2++;
+    pevent1->OSEventPtr = (OS_EVENT *)0;
+    OSEventFreeList     = &OSEventTbl[0];
+#endif	
+		
+    OSIntNesting  = 0;
+    OSRdyTbl      = 0;            /* Clear the ready list                     */
+		
+    OSTCBHighRdy  = (OS_TCB *)&OSTCBTbl[OS_LOWEST_PRIO];//默认已就绪最高位Idle
+    OSTCBCur      = (OS_TCB *)0;		
+	
+															/* Initialize the free list of OS_TCBs      */
+    for (i = 0; i < (OS_LOWEST_PRIO + 1); i++) 
+    {                                            /* Init. list of free TCBs            */        
+        OSTCBTbl[i].OSTCBNext = (OS_TCB *)0;                              /* Last OS_TCB                        */
     }
-    pq1->OSQPtr = (OS_Q *)0;
-    OSQFreeList = &OSQTbl[0];
-#endif
+    
+    OSTCBList        = (OS_TCB *)0;//The First task MUST BE Idle_Task and BE the last of list                      /* TCB lists initializations          */
 
     OSTaskCreate(OS_TaskIdle,
                 &OSTaskIdleStk[OS_TASK_IDLE_STK_SIZE - 1],
@@ -304,23 +261,6 @@ void  OSInit (void)
 *                            location if OS_STK_GROWTH is set to 0.  Note that stack growth is CPU
 *                            specific.
 *
-*              pbos          is a pointer to the bottom of stack.  A NULL pointer is passed if called by
-*                            'OSTaskCreate()'.
-*
-*              id            is the task's ID (0..65535)
-*
-*              stk_size      is the size of the stack (in 'stack units').  If the stack units are INT8Us
-*                            then, 'stk_size' contains the number of bytes for the stack.  If the stack
-*                            units are INT32Us then, the stack contains '4 * stk_size' bytes.  The stack
-*                            units are established by the #define constant OS_STK which is CPU
-*                            specific.  'stk_size' is 0 if called by 'OSTaskCreate()'.
-*
-*              pext          is a pointer to a user supplied memory area that is used to extend the task
-*                            control block.  This allows you to store the contents of floating-point
-*                            registers, MMU registers or anything else you could find useful during a
-*                            context switch.  You can even assign a name to each task and store this name
-*                            in this TCB extension.  A NULL pointer is passed if called by OSTaskCreate().
-*
 * Returns    : OS_ERR_NONE         if the call was successful
 *              OS_ERR_TASK_NO_MORE_TCB  if there are no more free TCBs to be allocated and thus, the task cannot
 *                                  be created.
@@ -328,44 +268,32 @@ void  OSInit (void)
 *********************************************************************************************************
 */
 
-INT8U  OS_TCBInit ( INT8U prio, OS_STK *ptos )
+static void  OS_TCBInit ( INT8U prio, OS_STK *ptos )
 {
     OS_TCB    *ptcb;
-    OS_CPU_SR  cpu_sr = 0;
-
-    OS_ENTER_CRITICAL();
 		
-    ptcb = OSTCBFreeList;                                  /* Get a free TCB from the free TCB list    */
-    if (ptcb != (OS_TCB *)0) {
-        OSTCBFreeList            = ptcb->OSTCBNext;        /* Update pointer to free TCB list          */
-        OS_EXIT_CRITICAL();
-        ptcb->OSTCBStkPtr        = ptos;                   /* Load Stack pointer in TCB                */
-        ptcb->OSTCBPrio          = prio;                   /* Load task priority into TCB              */
-        ptcb->OSTCBStat          = OS_STAT_RDY;            /* Task is ready to run                     */
-        ptcb->OSTCBStatPend      = OS_STAT_PEND_OK;        /* Clear pend status                        */
-        ptcb->OSTCBDly           = 0;                      /* Task is not delayed                      */
+    ptcb = &OSTCBTbl[prio];
+    
+    if( prio < OSTCBHighRdy->OSTCBPrio )
+    {
+        OSTCBHighRdy = ptcb;//遍历第一次调度时最高优先级的任务
+    }
+
+    ptcb->OSTCBStkPtr        = ptos;                   /* Load Stack pointer in TCB                */
+    ptcb->OSTCBPrio          = prio;                   /* Load task priority into TCB              */
+    ptcb->OSTCBDly           = 0;                      /* Task is not delayed                      */
 
 #if ( OS_Q_EN > 0 )
-        ptcb->OSTCBEventPtr      = (OS_EVENT  *)0;         /* Task is not pending on an  event         */
-#endif
-
-        OS_ENTER_CRITICAL();				
-				
-        OSTCBPrioTbl[prio] = ptcb;
-        ptcb->OSTCBNext    = OSTCBList;                    /* Link into TCB chain                      */
-        ptcb->OSTCBPrev    = (OS_TCB *)0;
-        if (OSTCBList != (OS_TCB *)0) {
-            OSTCBList->OSTCBPrev = ptcb;
-        }
-        OSTCBList               = ptcb;
-
-        OSRdyTbl |= ( 1 << ptcb->OSTCBPrio );               /* Make task ready to run                   */
-				
-        OS_EXIT_CRITICAL();
-        return (OS_ERR_NONE);
-    }
-    OS_EXIT_CRITICAL();
-    return (OS_ERR_TASK_NO_MORE_TCB);
+    ptcb->OSTCBStat          = OS_STAT_RDY;            /* Task is ready to run                     */
+    ptcb->OSTCBStatPend      = OS_STAT_PEND_OK;        /* Clear pend status                        */
+    ptcb->OSTCBEventPtr      = (OS_EVENT  *)0;         /* Task is not pending on an  event         */
+#endif		
+    
+    ptcb->OSTCBNext          = OSTCBList;              /* Link into TCB chain                      */
+                                                       /* 连接顺序与创建顺序相反                   */
+    OSTCBList                = ptcb;                   /* 即连接顺序为从后向前，先Idle             */
+                                                       /* 即将来遍历的顺序与创建的顺序一致         */
+    OSRdyTbl |= ( 1 << ptcb->OSTCBPrio );              /* Make task ready to run                   */
 }
 
 /*
@@ -409,23 +337,22 @@ INT8U  OS_TCBInit ( INT8U prio, OS_STK *ptos )
 *********************************************************************************************************
 */
 
-OS_STK *OSTaskStkInit (void (*task)(void), OS_STK *ptos,INT8U prio)
+static OS_STK *OSTaskStkInit (void (*task)(void), OS_STK *ptos,INT8U prio)
 {
     OS_STK *stk;
 		
     stk       = ptos;                    /* Load stack pointer                                 */
-                                         /* Registers stacked as if auto-saved on exception    */
+                                         /* Registers stacked as if [Auto-Saved on exception]  */
     *(  stk)  = (OS_STK)0x01000000L;     /* xPSR                                               */
     *(--stk)  = (OS_STK)task;            /* Entry Point                                        */
-    *(--stk)  = (OS_STK)0xFFFFFFFEL;     /* R14 (LR) (init value will cause fault if ever used)*/
-                                         /* 0xFFFFFFFE:返回ARM状态、线程模式、使用PSP,见EXC_RETURN */
-                                           
+    *(--stk)  = (OS_STK)0xFFFFFFFEL;     /* R14 (LR) (init value will cause fault if ever used)  0xFFFFFFFE:返回ARM状态、线程模式、使用PSP,见EXC_RETURN */                                       
     *(--stk)  = (OS_STK)0x12121212L;     /* R12                                                */
     *(--stk)  = (OS_STK)0x03030303L;     /* R3                                                 */
     *(--stk)  = (OS_STK)0x02020202L;     /* R2                                                 */
     *(--stk)  = (OS_STK)0x01010101L;     /* R1                                                 */
-    *(--stk)  = (OS_STK)0x000000000;     /* R0 : argument 原任务传入参数                                     */
-                                         /* Remaining registers saved on process stack         */
+    *(--stk)  = (OS_STK)0x000000000;     /* R0                                                 */
+    
+                                         /* Remaining registers saved on process stack[PSP]    */
     *(--stk)  = (OS_STK)0x11111111L;     /* R11                                                */
     *(--stk)  = (OS_STK)0x10101010L;     /* R10                                                */
     *(--stk)  = (OS_STK)0x09090909L;     /* R9                                                 */
@@ -434,29 +361,6 @@ OS_STK *OSTaskStkInit (void (*task)(void), OS_STK *ptos,INT8U prio)
     *(--stk)  = (OS_STK)0x06060606L;     /* R6                                                 */
     *(--stk)  = (OS_STK)0x05050505L;     /* R5                                                 */
     *(--stk)  = (OS_STK)0x04040404L;     /* R4                                                 */
-
-
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -497,90 +401,8 @@ OS_STK *OSTaskStkInit (void (*task)(void), OS_STK *ptos,INT8U prio)
 //    *(--stk)  = (OS_STK)0x3F800000u;     /* S1                                                     */
 //    *(--stk)  = (OS_STK)0x00000000u;     /* S0                                                     */
 
-
-
-
-
-
     return (stk);
 }
-
-
-//CPU_STK  *OSTaskStkInit (OS_TASK_PTR    p_task,
-//                         void          *p_arg,
-//                         CPU_STK       *p_stk_base,
-//                         CPU_STK       *p_stk_limit,
-//                         CPU_STK_SIZE   stk_size,
-//                         OS_OPT         opt)
-//{
-//    CPU_STK    *p_stk;
-
-
-//    (void)opt;                                                  /* Prevent compiler warning                               */
-
-//    p_stk = &p_stk_base[stk_size];                              /* Load stack pointer                                     */
-//                                                                /* Align the stack to 8-bytes.                            */
-//    p_stk = (CPU_STK *)((CPU_STK)(p_stk) & 0xFFFFFFF8);
-//                                                                /* Registers stacked as if auto-saved on exception        */
-//    *--p_stk = (CPU_STK)0x01000000u;                            /* xPSR                                                   */
-//    *--p_stk = (CPU_STK)p_task;                                 /* Entry Point                                            */
-//    *--p_stk = (CPU_STK)OS_TaskReturn;                          /* R14 (LR)                                               */
-//    *--p_stk = (CPU_STK)0x12121212u;                            /* R12                                                    */
-//    *--p_stk = (CPU_STK)0x03030303u;                            /* R3                                                     */
-//    *--p_stk = (CPU_STK)0x02020202u;                            /* R2                                                     */
-//    *--p_stk = (CPU_STK)p_stk_limit;                            /* R1                                                     */
-//    *--p_stk = (CPU_STK)p_arg;                                  /* R0 : argument                                          */
-//                                                                /* Remaining registers saved on process stack             */
-//    *--p_stk = (CPU_STK)0x11111111u;                            /* R11                                                    */
-//    *--p_stk = (CPU_STK)0x10101010u;                            /* R10                                                    */
-//    *--p_stk = (CPU_STK)0x09090909u;                            /* R9                                                     */
-//    *--p_stk = (CPU_STK)0x08080808u;                            /* R8                                                     */
-//    *--p_stk = (CPU_STK)0x07070707u;                            /* R7                                                     */
-//    *--p_stk = (CPU_STK)0x06060606u;                            /* R6                                                     */
-//    *--p_stk = (CPU_STK)0x05050505u;                            /* R5                                                     */
-//    *--p_stk = (CPU_STK)0x04040404u;                            /* R4                                                     */
-
-//#if (OS_CPU_ARM_FP_EN == DEF_ENABLED)
-//    if ((opt & OS_OPT_TASK_SAVE_FP) != (OS_OPT)0) {
-//        *--p_stk = (CPU_STK)0x02000000u;                        /* FPSCR                                                  */
-//                                                                /* Initialize S0-S31 floating point registers             */
-//        *--p_stk = (CPU_STK)0x41F80000u;                        /* S31                                                    */
-//        *--p_stk = (CPU_STK)0x41F00000u;                        /* S30                                                    */
-//        *--p_stk = (CPU_STK)0x41E80000u;                        /* S29                                                    */
-//        *--p_stk = (CPU_STK)0x41E00000u;                        /* S28                                                    */
-//        *--p_stk = (CPU_STK)0x41D80000u;                        /* S27                                                    */
-//        *--p_stk = (CPU_STK)0x41D00000u;                        /* S26                                                    */
-//        *--p_stk = (CPU_STK)0x41C80000u;                        /* S25                                                    */
-//        *--p_stk = (CPU_STK)0x41C00000u;                        /* S24                                                    */
-//        *--p_stk = (CPU_STK)0x41B80000u;                        /* S23                                                    */
-//        *--p_stk = (CPU_STK)0x41B00000u;                        /* S22                                                    */
-//        *--p_stk = (CPU_STK)0x41A80000u;                        /* S21                                                    */
-//        *--p_stk = (CPU_STK)0x41A00000u;                        /* S20                                                    */
-//        *--p_stk = (CPU_STK)0x41980000u;                        /* S19                                                    */
-//        *--p_stk = (CPU_STK)0x41900000u;                        /* S18                                                    */
-//        *--p_stk = (CPU_STK)0x41880000u;                        /* S17                                                    */
-//        *--p_stk = (CPU_STK)0x41800000u;                        /* S16                                                    */
-//        *--p_stk = (CPU_STK)0x41700000u;                        /* S15                                                    */
-//        *--p_stk = (CPU_STK)0x41600000u;                        /* S14                                                    */
-//        *--p_stk = (CPU_STK)0x41500000u;                        /* S13                                                    */
-//        *--p_stk = (CPU_STK)0x41400000u;                        /* S12                                                    */
-//        *--p_stk = (CPU_STK)0x41300000u;                        /* S11                                                    */
-//        *--p_stk = (CPU_STK)0x41200000u;                        /* S10                                                    */
-//        *--p_stk = (CPU_STK)0x41100000u;                        /* S9                                                     */
-//        *--p_stk = (CPU_STK)0x41000000u;                        /* S8                                                     */
-//        *--p_stk = (CPU_STK)0x40E00000u;                        /* S7                                                     */
-//        *--p_stk = (CPU_STK)0x40C00000u;                        /* S6                                                     */
-//        *--p_stk = (CPU_STK)0x40A00000u;                        /* S5                                                     */
-//        *--p_stk = (CPU_STK)0x40800000u;                        /* S4                                                     */
-//        *--p_stk = (CPU_STK)0x40400000u;                        /* S3                                                     */
-//        *--p_stk = (CPU_STK)0x40000000u;                        /* S2                                                     */
-//        *--p_stk = (CPU_STK)0x3F800000u;                        /* S1                                                     */
-//        *--p_stk = (CPU_STK)0x00000000u;                        /* S0                                                     */
-//    }
-//#endif
-
-//    return (p_stk);
-//}
 
 /*$PAGE*/
 /*
@@ -592,10 +414,6 @@ OS_STK *OSTaskStkInit (void (*task)(void), OS_STK *ptos,INT8U prio)
 *              created by an ISR.
 *
 * Arguments  : task     is a pointer to the task's code
-*
-*              p_arg    is a pointer to an optional data area which can be used to pass parameters to
-*                       the task when the task first executes.  Where the task is concerned it thinks
-*                       it was invoked and passed the argument 'p_arg' as follows:
 *
 *                           void Task (void *p_arg)
 *                           {
@@ -626,26 +444,16 @@ OS_STK *OSTaskStkInit (void (*task)(void), OS_STK *ptos,INT8U prio)
 void  OSTaskCreate (void (*task)(void), OS_STK *ptos, INT8U prio)
 {
     OS_STK    *psp;
-//    INT8U      err;
-//    OS_CPU_SR  cpu_sr = 0;
-
-//    OS_ENTER_CRITICAL();
 		
-    if (OSTCBPrioTbl[prio] == (OS_TCB *)0) { /* Make sure task doesn't already exist at this priority  */
-		OSTCBPrioTbl[prio] =  (OS_TCB *)1;   /* Reserve the priority to prevent others from doing ...  */
-                                             /* ... the same thing until task is created.              */
-//        OS_EXIT_CRITICAL();
+    if (OSTCBTbl[prio].OSTCBNext == (OS_TCB *)0)  /* Make sure task doesn't already exist at this priority  */
+    {    
         psp = OSTaskStkInit(task, ptos,prio);              		/* Initialize the task's stack         */				
-              OS_TCBInit( prio, psp );				
-//        return (err);
+              OS_TCBInit( prio, psp );
     }
     else
     {
         while(1);               /* Error: Minos Panic OS_ERR_PRIO_EXIST           */
     }
-
-//    OS_EXIT_CRITICAL();
-//    return (OS_ERR_PRIO_EXIST);
 }
 
 /*$PAGE*/
@@ -666,10 +474,7 @@ void  OSTaskCreate (void (*task)(void), OS_STK *ptos, INT8U prio)
 
 void  OSStart (void)
 {
-	OS_PrioGetHighest();                               	 /* Find highest priority's task priority number   */
-	OSPrioCur     = OSPrioHighRdy;
-	OSTCBHighRdy  = OSTCBPrioTbl[OSPrioHighRdy]; 		 /* Point to highest priority task ready to run    */
-	OSTCBCur      = OSTCBHighRdy;
+    OSTCBCur = OSTCBHighRdy;
 	
     /** OSStartHighRdy **/
     NVIC_SetPriority( PendSV_IRQn, 0xFF );
@@ -681,4 +486,3 @@ void  OSStart (void)
 }
 
 /********************* (C) COPYRIGHT 2015 Windy Albert **************************** END OF FILE ********/
-
