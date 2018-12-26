@@ -2,16 +2,16 @@
 ;                                               MinOS
 ;                                         The Real-Time Kernel
 ;
-;                               (c) Copyright 2015-2020, ZH, Windy Albert
+;                               (c) Copyright 2018-2020, Windy Albert
 ;                                          All Rights Reserved
 ;
 ;                                           Generic ARM Port
 ;
 ; File      : MINOS_CPU.ASM
-; Version   : V1.00[From.V2.86]
+; Version   : V2.00[From.V2.86]
 ; By        : Windy Albert & Jean J. Labrosse
 ;
-; For       : ARMv7M Cortex-M3
+; For       : ARMv7M Cortex-M4
 ; Mode      : Thumb2
 ; Toolchain : RealView Development Suite
 ;             RealView Microcontroller Development Kit (MDK)
@@ -42,7 +42,7 @@
 ;                                     void OS_CPU_PendSVHandler(void)
 ;
 ; Note(s) : 1) PendSV is used to cause a context switch.  This is a recommended method for performing
-;              context switches with Cortex-M3.  This is because the Cortex-M3 auto-saves half of the
+;              context switches with Cortex-M4.  This is because the Cortex-M4 auto-saves half of the
 ;              processor context on any exception, and restores same on return from exception.  So only
 ;              saving of R4-R11 is required and fixing up the stack pointers.  Using the PendSV exception
 ;              this way means that context saving and restoring is identical whether it is initiated from
@@ -52,16 +52,14 @@
 ;              a) Get the process SP, if 0 then skip (goto d) the saving part (first context switch);
 ;              b) Save remaining regs r4-r11 on process stack;
 ;              c) Save the process SP in its TCB, OSTCBCur->OSTCBStkPtr = SP;
-;              d) Call OSTaskSwHook();
-;              e) Get current high priority, OSPrioCur = OSPrioHighRdy;
-;              f) Get current ready thread TCB, OSTCBCur = OSTCBHighRdy;
-;              g) Get new process SP from TCB, SP = OSTCBHighRdy->OSTCBStkPtr;
-;              h) Restore R4-R11 from new process stack;
-;              i) Perform exception return which will restore remaining context.
+;              d) Get current ready thread TCB, OSTCBCur = OSTCBHighRdy;
+;              e) Get new process SP from TCB, SP = OSTCBHighRdy->OSTCBStkPtr;
+;              f) Restore R4-R11 from new process stack;
+;              g) Perform exception return which will restore remaining context.
 ;
 ;           3) On entry into PendSV handler:
 ;              a) The following have been saved on the process stack (by processor):
-;                 xPSR, PC, LR, R12, R0-R3
+;                 xPSR, PC, LR, R12, R3, R2, R1, R0
 ;              b) Processor mode is switched to Handler mode (from Thread mode)
 ;              c) Stack is Main stack (switched from Process stack)
 ;              d) OSTCBCur      points to the OS_TCB of the task to suspend
@@ -97,7 +95,7 @@ _nosave
 	
 	ADDS    R0, R0, #0x20
     MSR     PSP, R0                                             ; Load PSP with new process SP
-    ORR     LR, LR, #0x04                                       ; Ensure exception return uses process stack，将bit2置1，返回后将使用PSP
+    ORR     LR, LR, #0x04                                       ; Ensure exception return uses process stack
     CPSIE   I
 	
     BX      LR                                                  ; Exception return will restore remaining context

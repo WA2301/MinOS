@@ -88,12 +88,6 @@ OS_EVENT  *OSQCreate (void **start, INT16U size)
 *                                                message.
 *                            OS_ERR_TIMEOUT      A message was not received within the specified 'timeout'.
 *
-* Returns    : != (void *)0  is a pointer to the message received
-*              == (void *)0  if you received a NULL pointer message or,
-*                            if no message was received or,
-*                            if 'pevent' is a NULL pointer or,
-*                            if you didn't pass a pointer to a queue.
-*
 *********************************************************************************************************
 */
 
@@ -190,8 +184,6 @@ void  *OSQPend (OS_EVENT *pevent, INT16U timeout, INT8U *perr)
 *
 * Returns    : OS_ERR_NONE           The call was successful and the message was sent
 *              OS_ERR_Q_FULL         If the queue cannot accept any more messages because it is full.
-*              OS_ERR_EVENT_TYPE     If you didn't pass a pointer to a queue.
-*              OS_ERR_PEVENT_NULL    If 'pevent' is a NULL pointer
 *
 *********************************************************************************************************
 */
@@ -228,8 +220,6 @@ INT8U  OSQPost (OS_EVENT *pevent, void *pmsg)
 
         // OS_EventTaskRemove(ptcb, pevent);                   /* Remove this task from event   wait list     */
         pevent->OSEventWaitTbl &= ~( 1 << ptcb->OSTCBPrio ); /* Remove task from wait list                  */
-
-
 
 
         OS_EXIT_CRITICAL();
